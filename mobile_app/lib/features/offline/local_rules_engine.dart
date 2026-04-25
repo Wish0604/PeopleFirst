@@ -48,6 +48,14 @@ class LocalRulesEngine {
       ];
     }
 
+    // Validate alert type
+    if (!_supportedAlertTypes.contains(alertType)) {
+      return [
+        'Unknown alert type',
+        'Follow official emergency guidance and monitor updates'
+      ];
+    }
+
     // Critical risk response
     if (riskLevel == 'CRITICAL') {
       suggestedActions.addAll(_getCriticalActions(alertType));
