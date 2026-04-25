@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Base helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // ALERTS: Dashboard prototype needs unauthenticated write access
+    match /alerts/{alertId} {
+      allow read, write: if true; 
+    }
+
+    // RESPONSES: Dashboard needs to read all. Mobile users create them. 
+    match /responses/{responseId} {
+      allow read: if true;
+      allow create, update: if true; // Relaxed for prototype
+      allow delete: if false; // Audit trail preservation
+    }
+
+    // DISPATCH LOGS: Dashboard creates them. Mobile app reads them.
+    match /dispatch_logs/{logId} {
+      allow read, write: if true; 
+    }
+
+    // DELIVERY LOGS: Dashboard and backend read/write
+    match /delivery_logs/{logId} {
+      allow read, write: if true; 
+    }
+
+    // TASKS: Rescue tracking board
+    match /tasks/{taskId} {
+      allow read, write: if true; 
+    }
+
+    // USERS: Users can read and write their own profile data
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+    
+    // Deny everything else by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

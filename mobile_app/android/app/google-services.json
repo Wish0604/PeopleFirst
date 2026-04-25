@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "771577061234",
+    "project_id": "peoplefirst-791ef",
+    "storage_bucket": "peoplefirst-791ef.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:771577061234:android:e5914cb8a66dcee0b087eb",
+        "android_client_info": {
+          "package_name": "com.example.peoplefirst_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBpsVD5KONIIvZu-TJesalwMEUCn4AG1wM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
