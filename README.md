@@ -121,6 +121,55 @@ Data access pattern:
 7. NEED_HELP responses generate rescue tasks.
 8. Dashboard streams alerts, responses, delivery logs, and tasks for operator action.
 
+## System Workflow Flowchart
+
+```mermaid
+flowchart TD
+  A[Risk Data Update or Operator Alert Publish] --> B{Source Type}
+  B -->|Zone Risk Change| C[onRiskUpdate Trigger]
+  B -->|Manual Dashboard Publish| D[Alert Document Created]
+  C --> D
+
+  D --> E[sendAlert Trigger]
+  E --> F[Alert Orchestrator]
+  F --> G{Channel Decision}
+
+  G -->|Internet Available| H[FCM Push Delivery]
+  G -->|FCM Unavailable or Fallback Needed| I[SMS Fallback via Twilio]
+  G -->|Escalation| J[Voice Fallback via Twilio]
+  G -->|Offline Path| K[Offline Emergency Actions]
+
+  H --> L[Delivery Log Recorded]
+  I --> L
+  J --> L
+  K --> L
+
+  L --> M[Mobile App Receives Alert]
+  M --> N[Show Emergency UI and Guidance]
+  N --> O{Citizen Action}
+
+  O -->|I Am Safe| P[Create SAFE Response]
+  O -->|Need Help| Q[Create NEED_HELP Response]
+
+  P --> R[onUserResponse Trigger]
+  Q --> R
+
+  R --> S[Aggregate Response Counters on Alert]
+  R --> T{Status NEED_HELP or HELP?}
+  T -->|Yes| U[Create Rescue Task]
+  T -->|No| V[No Task Creation]
+
+  U --> W[Task Appears in Dashboard TaskBoard]
+  V --> X[Dashboard Still Updates Response State]
+
+  W --> Y[Operator Assigns and Updates Task Status]
+  Y --> Z[Rescue Coordination and Closure]
+
+  S --> AA[Dashboard Real-Time Panels Refresh]
+  AA --> AB[AlertStatus, ResponseList, DeliveryLogs, CoordinationMap]
+  AB --> Y
+```
+
 ## Firestore Data Model
 
 Primary collections:
