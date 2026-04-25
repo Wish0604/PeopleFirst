@@ -1,233 +1,257 @@
-# 🚨 PeopleFirst – System Context
+# PeopleFirst
 
-## 🧭 Project Overview
+PeopleFirst is a closed-loop disaster response platform built to connect authorities and citizens in real time.
 
-PeopleFirst is a real-time disaster response system designed to bridge the gap between disaster prediction and action.
+It combines:
+- A Firebase-powered backend for risk updates, alert orchestration, and response processing
+- A Flutter mobile app for field users with offline emergency behavior
+- A React dashboard for command-and-control operations
 
-The system is built to ensure:
+Core objective:
+deliver alerts fast, capture citizen responses immediately, and convert distress signals into actionable rescue tasks.
 
-* Fast alert delivery
-* Offline functionality
-* Real-time citizen feedback
-* Coordinated rescue operations
+## Repository Layout
 
-Core principle:
-**Even if the internet fails, alerts and actions should still work.**
+Top-level directories:
 
----
+- backend
+  - Firebase Functions source, Firestore rules, deployment config
+- dashboard
+  - React operations dashboard
+- mobile_app
+  - Flutter app (Android, iOS, web, desktop targets)
+- shared
+  - Shared models and constants
+- firestore
+  - Local collection references and data scaffolding
 
-## 🏗️ System Architecture
+Key files:
 
-The implementation is split into four layers:
+- firebase.json
+- firestore.rules
+- firestore.indexes.json
+- RUNBOOK_DEMO.md
+- REPO_MEMORY.md
 
-1. Backend (Firebase Functions)
-2. Mobile App (Flutter)
-3. Dashboard (React)
-4. Shared models and constants
+## Architecture
 
-### Project Structure
+### 1) Backend Layer (Firebase Functions + Firestore)
 
-```text
-backend/
-├── functions/
-│   ├── src/
-│   │   ├── index.ts
-│   │   ├── config/firebase.ts
-│   │   ├── modules/
-│   │   │   ├── risk/riskEngine.ts
-│   │   │   ├── alerts/
-│   │   │   │   ├── alertOrchestrator.ts
-│   │   │   │   ├── fcmService.ts
-│   │   │   │   ├── smsFallback.ts
-│   │   │   │   ├── offlineTrigger.ts
-│   │   │   │   └── deliveryTracker.ts
-│   │   │   ├── users/
-│   │   │   └── zones/
-│   │   ├── triggers/
-│   │   │   ├── onRiskUpdate.ts
-│   │   │   └── onUserResponse.ts
-│   │   └── utils/networkCheck.ts
-│   └── firebase.json
+Main function entry:
+- backend/functions/src/index.ts
 
-mobile_app/
-├── lib/
-│   ├── core/services/
-│   │   ├── notification_service.dart
-│   │   ├── sms_service.dart
-│   │   ├── offline_alert_service.dart
-│   │   ├── connectivity_service.dart
-│   │   └── local_storage_service.dart
-│   ├── features/
-│   │   ├── alerts/
-│   │   │   ├── alert_listener.dart
-│   │   │   └── alert_controller.dart
-│   │   ├── emergency/emergency_actions.dart
-│   │   └── offline/
-│   │       ├── siren_player.dart
-│   │       ├── flash_alert.dart
-│   │       └── local_rules_engine.dart
-│   └── main.dart
+Exported triggers:
+- sendAlert (on alert document creation)
+- onRiskUpdate (zone risk change trigger)
+- onUserResponse (citizen response trigger)
 
-dashboard/
-└── src/
-    └── features/
-        ├── alerts/
-        │   ├── AlertManager.jsx
-        │   └── AlertStatus.jsx
-        └── monitoring/DeliveryLogs.jsx
+Primary backend modules:
+- backend/functions/src/modules/risk/riskEngine.ts
+  - risk normalization/scoring and recommendation inputs
+- backend/functions/src/modules/alerts/alertOrchestrator.ts
+  - delivery orchestration across channels
+- backend/functions/src/modules/alerts/fcmService.ts
+  - primary push notifications
+- backend/functions/src/modules/alerts/smsService.ts
+  - Twilio SMS fallback (mock behavior when credentials are placeholder)
+- backend/functions/src/modules/alerts/voiceService.ts
+  - Twilio voice fallback (mock behavior when credentials are placeholder)
+- backend/functions/src/modules/alerts/deliveryTracker.ts
+  - delivery log events
 
-shared/
-├── models/
-│   ├── user.ts
-│   ├── alert.ts
-│   ├── zone.ts
-│   └── shelter.ts
-└── constants/enums.ts
+Response-to-logistics flow:
+- backend/functions/src/triggers/onUserResponse.ts
+  - aggregates SAFE and NEED_HELP responses
+  - creates rescue tasks for NEED_HELP responses
+  - includes status normalization for both NEED_HELP and HELP
 
-firestore/
-├── users/
-├── alerts/
-├── zones/
-├── shelters/
-├── responses/
-└── tasks/
-```
+Task backfill utility:
+- backend/functions/backfill_tasks_from_responses.js
 
----
+### 2) Mobile Layer (Flutter)
 
-## 🔁 Core Flow
+App bootstrap:
+- mobile_app/lib/main.dart
 
-1. Disaster data is received from IMD or mock sources.
-2. `riskEngine.ts` calculates the risk level.
-3. `onRiskUpdate.ts` triggers the alert pipeline.
-4. `alertOrchestrator.ts` decides the delivery channel.
-5. `networkCheck.ts` selects FCM, SMS fallback, or offline mode.
-6. The mobile app receives the alert and presents the emergency UI.
-7. The user responds with safe/help actions.
-8. The dashboard updates delivery and response status.
-9. Authorities use the live status to plan rescue.
+Core mobile services:
+- notification_service.dart (FCM setup and listeners)
+- connectivity_service.dart
+- local_storage_service.dart
+- offline_alert_service.dart
 
----
+Offline emergency modules:
+- siren_player.dart
+- flash_alert.dart
+- emergency_actions.dart
+- local_rules_engine.dart
 
-## 🚨 Multi-Channel Alert System
+Field features:
+- citizen login/navigation
+- alert feed and response actions
+- map and volunteer screens
+- real-time dispatch/listener behavior
 
-The alert system uses a fallback-based strategy with this priority order:
+### 3) Dashboard Layer (React)
 
-1. FCM as the primary channel
-2. SMS via device as the fallback channel
-3. Offline alerts as the last fallback
+Main composition:
+- dashboard/src/App.js
 
-Decision logic:
+Included panels:
+- AlertManager
+- AlertStatus
+- SummaryCards
+- AlertList
+- DeliveryLogs
+- ResponseList
+- CoordinationMap
+- LogisticsDispatch
+- TaskBoard
 
-* If internet is available, use FCM.
-* If internet is unavailable but the device can still send SMS, use SMS fallback.
-* If neither channel is available, trigger offline siren and flash alerts.
+Data access pattern:
+- Firestore onSnapshot streams through reusable hooks
 
-This logic is controlled in:
-backend/functions/src/modules/alerts/alertOrchestrator.ts
+## End-to-End Response Loop
 
-Channel detection is coordinated through:
-backend/functions/src/utils/networkCheck.ts
+1. Risk changes or alert publish action creates/updates alert context.
+2. Backend trigger invokes alert pipeline.
+3. Delivery is attempted via prioritized channel strategy.
+4. Mobile clients receive and surface emergency guidance.
+5. Users submit SAFE or NEED_HELP responses.
+6. Backend aggregates responses and logs latest responder state.
+7. NEED_HELP responses generate rescue tasks.
+8. Dashboard streams alerts, responses, delivery logs, and tasks for operator action.
 
-Delivery tracking is recorded in:
-backend/functions/src/modules/alerts/deliveryTracker.ts
+## Firestore Data Model
 
----
+Primary collections:
+- users
+- alerts
+- responses
+- deliveryLogs
+- tasks
+- zones
+- shelters
 
-## 📱 Mobile App Responsibilities
+Security (current rule intent in backend/firestore.rules):
+- alerts: authenticated read, backend-controlled writes
+- responses: authenticated user-scoped create/read
+- deliveryLogs: backend-only access
+- tasks: authenticated read/update, backend-only create/delete
+- default: deny all
 
-* Receive alerts through FCM.
-* Display emergency UI.
-* Allow user actions:
-  * I am Safe
-  * Need Help
-* Share location when needed.
-* Work offline with siren and flash feedback.
-* Apply local rules for emergency handling.
-* Support volunteer and rescue task flows.
+## Technology Stack
 
-Key mobile modules:
+- Backend
+  - Node.js 20
+  - TypeScript
+  - firebase-admin
+  - firebase-functions
+  - twilio
+- Dashboard
+  - React 18
+  - Firebase Web SDK
+  - react-leaflet + leaflet
+- Mobile
+  - Flutter
+  - firebase_core, firebase_auth, cloud_firestore, firebase_messaging
+  - audioplayers, torch_light, geolocator, connectivity_plus
 
-* notification_service.dart handles FCM.
-* sms_service.dart handles SMS fallback.
-* offline_alert_service.dart triggers siren and flash.
-* connectivity_service.dart detects internet availability.
-* alert_listener.dart decides how incoming alerts are handled.
+## Local Setup
 
----
+### Prerequisites
 
-## 🖥️ Dashboard Responsibilities
+- Node.js and npm
+- Flutter SDK
+- Firebase CLI
+- Android device or emulator for mobile testing
+- Access to Firebase project peoplefirst-791ef (or your own configured project)
 
-* Show live risk and alert status.
-* Monitor delivery logs.
-* Track delivery outcomes:
-  * FCM delivered
-  * SMS fallback used
-  * Offline triggered
-* View user responses.
-* Assign rescue teams.
-* Track shelters and resources.
+### 1) Backend Functions
 
----
+From backend/functions:
 
-## ⚙️ Backend Responsibilities
+- npm install
+- npm run build
 
-### Risk Engine
+Optional local emulation:
 
-* Input: weather or disaster data
-* Output: risk level such as LOW, MEDIUM, or HIGH
+- npm run serve
 
-### Alert Orchestrator
+### 2) Dashboard
 
-* Decides how to send alerts.
-* Calls the FCM, SMS, or offline modules.
-* Keeps the delivery path centralized in the backend.
+From dashboard:
 
-### Triggers
+- npm install
+- npm start
 
-* onRiskUpdate.ts sends alerts after a risk change.
-* onUserResponse.ts updates response state and dashboard data.
+Production build:
 
----
+- npm run build
 
-## 🔥 Key Design Principles
+### 3) Mobile App
 
-1. Offline-first system
-2. Multi-channel communication
-3. Real-time feedback loop
-4. Modular architecture
-5. Scalable Firebase backend
+From mobile_app:
 
----
+- flutter pub get
+- flutter run -d <device_id>
 
-## 📊 Firestore Collections
+Useful diagnostics:
 
-* users
-* alerts
-* zones
-* shelters
-* responses
-* tasks
+- flutter devices
+- flutter analyze lib
+- flutter test
 
----
+## Deployment
 
-## 🧠 Important Notes for Development
+From backend:
 
-* Do not rely only on internet connectivity.
-* Every alert must have a fallback path.
-* Keep modules independent.
-* Keep critical logic in the backend.
-* Mobile should handle offline cases gracefully.
+- firebase deploy --only functions,firestore:rules
 
----
+Notes:
+- If Twilio secrets are placeholders, SMS/voice modules remain in mock mode.
+- For production fallback channels, configure valid TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER.
 
-## 🎯 Goal of Implementation
+## Operational Runbook
 
-Build a system that:
+Primary runbook:
+- RUNBOOK_DEMO.md
 
-* Works during disasters.
-* Handles network failure.
-* Provides real-time coordination.
-* Scales to district and state level.
+Typical demo script:
 
----
+1. Launch dashboard and mobile app.
+2. Publish an alert from dashboard.
+3. Verify alert appears in mobile.
+4. Respond from mobile with NEED_HELP.
+5. Confirm response and rescue task appear in dashboard.
+6. Progress task status in TaskBoard.
+
+## Current Status Snapshot
+
+Implemented highlights:
+- Real-time alert publishing and monitoring
+- Multi-channel alert orchestration with fallback services
+- Offline-capable mobile emergency behavior (siren/flash)
+- Response aggregation and rescue task generation
+- Dashboard coordination panels including logistics and task board
+- Firestore security rules deployed and enforced
+
+## Troubleshooting
+
+Common issues and quick fixes:
+
+- Flutter cannot find pubspec:
+  - run commands from mobile_app directory
+- Device not detected:
+  - run flutter devices and reconnect USB/debug authorization
+- Functions deploy fails during analysis:
+  - ensure no SDK clients with strict credential validation are instantiated at module load time
+- Dashboard shows no rescue tasks:
+  - verify onUserResponse trigger deployment and tasks rules access
+
+## Contribution Guidance
+
+- Keep backend business logic modular in backend/functions/src/modules.
+- Prefer trigger orchestration in backend/functions/src/triggers.
+- Keep mobile offline behavior deterministic and locally testable.
+- Maintain strict Firestore rules with least-privilege access.
+- Update README and runbook whenever architecture or workflow changes.
