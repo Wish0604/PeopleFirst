@@ -44,6 +44,11 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
     
+    // VOLUNTEERS: Dashboard reads, mobile writes
+    match /volunteers/{volunteerId} {
+      allow read, write: if true; 
+    }
+    
     // Deny everything else by default
     match /{document=**} {
       allow read, write: if false;

@@ -19,6 +19,143 @@ button {
   background: radial-gradient(circle at top, rgba(255, 82, 82, 0.15), transparent 35%), #0b1020;
 }
 
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background:
+    radial-gradient(circle at top left, rgba(112, 240, 184, 0.16), transparent 24%),
+    radial-gradient(circle at bottom right, rgba(255, 82, 82, 0.18), transparent 28%),
+    #0b1020;
+}
+
+.auth-card {
+  width: min(100%, 520px);
+  padding: 28px;
+  border-radius: 24px;
+  background: rgba(16, 24, 48, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
+.auth-card--compact {
+  width: min(100%, 460px);
+}
+
+.auth-kicker {
+  margin: 0 0 10px;
+  color: #80f0bc;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.auth-form input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #e8ecf7;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.auth-button,
+.auth-link-button {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.auth-button {
+  color: #0b1020;
+  font-weight: 700;
+  background: linear-gradient(135deg, #70f0b8, #b9ffd3);
+}
+
+.auth-button:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.auth-link-button {
+  color: #e8ecf7;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.auth-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-status {
+  margin: 14px 0 0;
+  font-size: 14px;
+}
+
+.auth-status--success {
+  color: #80f0bc;
+}
+
+.auth-status--error {
+  color: #ff9696;
+}
+
+.auth-note {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-role-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dashboard-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.dashboard-identity-copy {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(112, 240, 184, 0.15);
+  color: #80f0bc;
+  border: 1px solid rgba(112, 240, 184, 0.24);
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -188,6 +325,26 @@ button {
 }
 
 .status-badge.low {
+  background: rgba(112, 240, 184, 0.22);
+  color: #80f0bc;
+}
+
+.status-badge.emergency {
+  background: rgba(255, 72, 72, 0.25);
+  color: #ffb2b2;
+}
+
+.status-badge.warning {
+  background: rgba(255, 157, 72, 0.25);
+  color: #ffd0a2;
+}
+
+.status-badge.watch {
+  background: rgba(255, 217, 120, 0.2);
+  color: #ffd978;
+}
+
+.status-badge.routine {
   background: rgba(112, 240, 184, 0.22);
   color: #80f0bc;
 }

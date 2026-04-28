@@ -49,11 +49,27 @@ class _SosScreenState extends State<SosScreen> {
   }
 
   Future<void> _submitStatus(String status) async {
-    final user = FirebaseAuth.instance.currentUser;
+    var user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      try {
+        final credential = await FirebaseAuth.instance.signInAnonymously();
+        user = credential.user;
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Unable to create session. Please try again.')),
+          );
+        }
+        return;
+      }
+    }
+
     if (user == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please log in to submit your status.')),
+          const SnackBar(
+              content: Text('Unable to create session. Please try again.')),
         );
       }
       return;
@@ -210,6 +226,8 @@ class _SosScreenState extends State<SosScreen> {
                     label: 'Local Outdoor Sirens Active',
                     accent: AppColors.emergencyRed,
                   ),
+                  const SizedBox(height: 12),
+                  _AlertExplainabilityPanel(),
                   const SizedBox(height: 16),
                   _PrimaryAction(
                       label: 'I Am Safe',
@@ -256,13 +274,13 @@ class _SosScreenState extends State<SosScreen> {
                   letterSpacing: 2)),
           const SizedBox(height: 10),
           Row(
-            children: [1, 2, 3, 4, 5].map((count) {
-              final selected = _peopleCount == count;
+            children: [1, 2, 3, 4, 5].map((groupSize) {
+              final selected = _peopleCount == groupSize;
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: GestureDetector(
-                    onTap: () => setState(() => _peopleCount = count),
+                    onTap: () => setState(() => _peopleCount = groupSize),
                     child: Container(
                       height: 54,
                       alignment: Alignment.center,
@@ -274,7 +292,7 @@ class _SosScreenState extends State<SosScreen> {
                             color:
                                 selected ? Colors.transparent : Colors.white10),
                       ),
-                      child: Text(count == 5 ? '5+' : '$count',
+                      child: Text(groupSize == 5 ? '5+' : '$groupSize',
                           style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
@@ -567,6 +585,92 @@ class _BannerRow extends StatelessWidget {
   }
 }
 
+class _AlertExplainabilityPanel extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const SizedBox.shrink();
+        }
+
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const SizedBox.shrink();
+        }
+
+        final latest = snapshot.data?.docs.isNotEmpty == true
+            ? snapshot.data!.docs.first.data()
+            : null;
+
+        final priority =
+            (latest?['riskPriority'] ?? latest?['riskLevel'] ?? 'ROUTINE')
+                .toString();
+        final intelligenceScore =
+            (latest?['riskIntelligenceScore'] ?? latest?['riskScore'] ?? 'N/A')
+                .toString();
+        final intelligenceReason =
+            (latest?['riskIntelligenceReason'] ?? latest?['riskReason'] ?? '')
+                .toString();
+        final zone = (latest?['sourceZoneName'] ??
+                latest?['sourceZoneId'] ??
+                'Unspecified')
+            .toString();
+
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+              color: AppColors.surfaceContainerHigh,
+              border: Border.all(color: Colors.white12)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('INTELLIGENT RISK CONTEXT',
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white54,
+                      letterSpacing: 2)),
+              const SizedBox(height: 10),
+              Text('Priority: ${priority.toUpperCase()}',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white)),
+              const SizedBox(height: 4),
+              Text('Intelligence Score: $intelligenceScore',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white70)),
+              const SizedBox(height: 4),
+              Text('Zone: $zone',
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white70)),
+              if (intelligenceReason.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(intelligenceReason,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white60,
+                        height: 1.3)),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _PrimaryAction extends StatelessWidget {
   const _PrimaryAction(
       {required this.label,
@@ -624,8 +728,9 @@ class _StatusButton extends StatelessWidget {
         height: 56,
         padding: const EdgeInsets.symmetric(horizontal: 18),
         decoration: BoxDecoration(
-            color:
-                selected ? color.withOpacity(0.18) : AppColors.surfaceContainer,
+            color: selected
+                ? color.withValues(alpha: 0.18)
+                : AppColors.surfaceContainer,
             border: Border.all(color: color)),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,

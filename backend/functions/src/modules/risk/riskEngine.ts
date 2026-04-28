@@ -4,6 +4,8 @@ export interface RiskAssessmentInput {
 	riskLevel?: unknown;
 	riskScore?: unknown;
 	hazardScore?: unknown;
+	confidence?: unknown;
+	sourcesCount?: unknown;
 	rainfallMm?: unknown;
 	windSpeedKph?: unknown;
 	floodRisk?: unknown;
@@ -21,6 +23,14 @@ export interface RiskAssessment {
 	score: number;
 	reason: string;
 	recommendedActions: string[];
+}
+
+export type RiskPriority = 'ROUTINE' | 'WATCH' | 'WARNING' | 'EMERGENCY';
+
+export interface IntelligentRiskAssessment extends RiskAssessment {
+	priority: RiskPriority;
+	intelligenceScore: number;
+	intelligenceReason: string;
 }
 
 const KNOWN_RISK_LEVELS: AlertRiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -104,6 +114,16 @@ function scoreFromInputs(input: RiskAssessmentInput): number {
 		score += 15;
 	}
 
+	const confidence = toNumber(input.confidence);
+	if (confidence !== undefined) {
+		score += Math.max(0, Math.min(confidence, 1)) * 12;
+	}
+
+	const sourcesCount = toNumber(input.sourcesCount);
+	if (sourcesCount !== undefined) {
+		score += Math.min(sourcesCount, 4) * 4;
+	}
+
 	return clampScore(score);
 }
 
@@ -155,6 +175,10 @@ function buildRecommendedActions(level: AlertRiskLevel, input: RiskAssessmentInp
 		actions.push('Follow the directed evacuation route');
 	}
 
+	if (toNumber(input.sourcesCount) !== undefined && (level === 'HIGH' || level === 'CRITICAL')) {
+		actions.push('Cross-check alerts against multi-source confirmations');
+	}
+
 	if (actions.length === 0) {
 		actions.push('Stay calm and monitor official updates');
 	}
@@ -181,6 +205,35 @@ export function evaluateRiskLevel(input: RiskAssessmentInput): RiskAssessment {
 		score,
 		reason: buildReason(input, score, level),
 		recommendedActions: buildRecommendedActions(level, input),
+	};
+}
+
+function buildPriority(level: AlertRiskLevel, score: number): RiskPriority {
+	if (level === 'CRITICAL' || score >= 90) return 'EMERGENCY';
+	if (level === 'HIGH' || score >= 70) return 'WARNING';
+	if (level === 'MEDIUM' || score >= 40) return 'WATCH';
+	return 'ROUTINE';
+}
+
+function buildIntelligenceReason(input: RiskAssessmentInput, score: number, priority: RiskPriority): string {
+	const sourceCount = toNumber(input.sourcesCount) ?? 1;
+	const confidence = toNumber(input.confidence);
+	const confidenceText = confidence !== undefined ? ` with confidence ${Math.round(confidence * 100)}%` : '';
+	return `AI scoring synthesized ${sourceCount} source(s) into ${priority} priority at ${score}${confidenceText}.`;
+}
+
+export function evaluateIntelligentRisk(input: RiskAssessmentInput): IntelligentRiskAssessment {
+	const assessment = evaluateRiskLevel(input);
+	const priority = buildPriority(assessment.level, assessment.score);
+	const intelligenceScore = clampScore(
+		assessment.score + Math.min(toNumber(input.sourcesCount) ?? 1, 4) * 2 + (toNumber(input.confidence) ?? 0) * 10,
+	);
+
+	return {
+		...assessment,
+		priority,
+		intelligenceScore,
+		intelligenceReason: buildIntelligenceReason(input, intelligenceScore, priority),
 	};
 }
 

@@ -10,14 +10,22 @@ class AlertListener {
 
   static bool _isCriticalAlert(Map<String, dynamic>? payload) {
     final riskLevel = payload?['riskLevel']?.toString().toUpperCase();
-    return riskLevel == 'HIGH' || riskLevel == 'CRITICAL';
+    final riskPriority = payload?['riskPriority']?.toString().toUpperCase();
+    return riskLevel == 'HIGH' ||
+        riskLevel == 'CRITICAL' ||
+        riskPriority == 'WARNING' ||
+        riskPriority == 'EMERGENCY';
   }
 
   static bool _isHighPriorityAlert(Map<String, dynamic>? payload) {
     final riskLevel = payload?['riskLevel']?.toString().toUpperCase();
+    final riskPriority = payload?['riskPriority']?.toString().toUpperCase();
     return riskLevel == 'HIGH' ||
         riskLevel == 'CRITICAL' ||
-        riskLevel == 'MEDIUM';
+        riskLevel == 'MEDIUM' ||
+        riskPriority == 'WATCH' ||
+        riskPriority == 'WARNING' ||
+        riskPriority == 'EMERGENCY';
   }
 
   /// Handle incoming alert with offline-first approach

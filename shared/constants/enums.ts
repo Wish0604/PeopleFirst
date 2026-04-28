@@ -27,6 +27,7 @@ export enum DeliveryStatus {
 export enum UserRole {
 	CITIZEN = 'CITIZEN',
 	VOLUNTEER = 'VOLUNTEER',
-	OPERATOR = 'OPERATOR',
+	COLLECTOR = 'COLLECTOR',
+	NDRF = 'NDRF',
 	ADMIN = 'ADMIN',
 }

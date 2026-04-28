@@ -24,8 +24,8 @@
    - `flutter run -d RZ8RA0KG7ER`
    - If debug protocol disconnects, use: `flutter run --release -d RZ8RA0KG7ER`
 3. Backend deployment (already done once, repeat only if code changed):
-   - `cd C:/Projects/PeopleFirst/backend`
-   - `firebase deploy --only functions,firestore:rules`
+   - `cd C:/Projects/PeopleFirst`
+   - `firebase deploy --config backend/firebase.json --only functions,firestore:rules`
 
 ## Demo Script (Primary)
 1. Open dashboard and publish alert from **Publish Alert** panel.

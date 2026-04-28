@@ -29,7 +29,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _listenForDispatchSignals() {
-    final user = FirebaseAuth.instance.currentUser;
+    User? user;
+    try {
+      user = FirebaseAuth.instance.currentUser;
+    } catch (_) {
+      // Allow UI rendering in environments where Firebase is not initialized.
+      return;
+    }
     if (user == null) return;
 
     _dispatchSubscription = FirebaseFirestore.instance
@@ -39,15 +45,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         .listen((snapshot) {
       for (var change in snapshot.docChanges) {
         if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data() as Map<String, dynamic>?;
+          final data = change.doc.data();
           if (data == null) continue;
 
           final message = data['message'] ?? 'No instruction provided';
           final resourceType = data['resourceType'] ?? 'RESOURCE';
 
-          final createdAt = data['createdAt'] as Timestamp?;
+          final createdAt = data['createdAt'];
           // Only show recent dispatches (last hour) to avoid old popups on startup
-          if (createdAt != null) {
+          if (createdAt is Timestamp) {
             final timeDiff = DateTime.now().difference(createdAt.toDate());
             if (timeDiff.inMinutes > 60) continue;
           }
@@ -79,7 +85,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Resource: $resourceType',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, color: Colors.white70)),
               const SizedBox(height: 12),
               Text(message, style: const TextStyle(color: Colors.white)),
             ],
@@ -124,7 +131,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 Row(
                   children: [
                     Icon(LucideIcons.shieldAlert,
-                        color: AppColors.emergencyRed.withOpacity(0.8),
+                        color: AppColors.emergencyRed.withValues(alpha: 0.8),
                         size: 32),
                     const SizedBox(width: 12),
                     const Text(
@@ -143,7 +150,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.surfaceContainer,
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.1)),
                   ),
                   child: const Text(
                     'MESH ACTIVE',
@@ -175,7 +183,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         decoration: BoxDecoration(
           color: AppColors.surfaceContainerLow,
           border: Border(
-              top: BorderSide(color: Colors.white.withOpacity(0.05), width: 4)),
+              top: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.05), width: 4)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,

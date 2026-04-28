@@ -28,6 +28,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /volunteers/{volunteerId} {
+      allow read: if request.auth != null && request.auth.uid == volunteerId;
+      allow create, update: if request.auth != null && request.auth.uid == volunteerId;
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

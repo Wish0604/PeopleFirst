@@ -125,49 +125,55 @@ Data access pattern:
 
 ```mermaid
 flowchart TD
-  A[Risk Data Update or Operator Alert Publish] --> B{Source Type}
-  B -->|Zone Risk Change| C[onRiskUpdate Trigger]
-  B -->|Manual Dashboard Publish| D[Alert Document Created]
-  C --> D
+  A[Multi-API Disaster Signals] --> B[Ingestion Fan-In]
+  B --> C[Normalization Layer]
+  C --> D[Zone Mapping + Hyperlocal Routing]
+  D --> E[Zone Aggregation]
+  E --> F[Rule-Based Risk Engine]
+  F --> G[AI Scoring + Priority Enrichment]
+  G --> H[Zone Risk Update]
+  H --> I{High or Critical?}
+  I -->|Yes| J[Alert Created in Firestore]
+  I -->|No| K[Dashboard Risk State Refresh Only]
 
-  D --> E[sendAlert Trigger]
-  E --> F[Alert Orchestrator]
-  F --> G{Channel Decision}
+  J --> L[sendAlert Trigger]
+  L --> M[Alert Orchestrator]
+  M --> N{Channel Decision}
 
-  G -->|Internet Available| H[FCM Push Delivery]
-  G -->|FCM Unavailable or Fallback Needed| I[SMS Fallback via Twilio]
-  G -->|Escalation| J[Voice Fallback via Twilio]
-  G -->|Offline Path| K[Offline Emergency Actions]
+  N -->|Internet Available| O[FCM Push Delivery]
+  N -->|FCM Fallback Needed| P[SMS Fallback via Twilio]
+  N -->|Escalation| Q[Voice Fallback via Twilio]
+  N -->|Offline Path| R[Offline Emergency Actions]
 
-  H --> L[Delivery Log Recorded]
-  I --> L
-  J --> L
-  K --> L
+  O --> S[Delivery Log Recorded]
+  P --> S
+  Q --> S
+  R --> S
 
-  L --> M[Mobile App Receives Alert]
-  M --> N[Show Emergency UI and Guidance]
-  N --> O{Citizen Action}
+  S --> T[Mobile App Receives Alert]
+  T --> U[Show Emergency UI and Guidance]
+  U --> V{Citizen Action}
 
-  O -->|I Am Safe| P[Create SAFE Response]
-  O -->|Need Help| Q[Create NEED_HELP Response]
+  V -->|I Am Safe| W[Create SAFE Response]
+  V -->|Need Help| X[Create NEED_HELP Response]
 
-  P --> R[onUserResponse Trigger]
-  Q --> R
+  W --> Y[onUserResponse Trigger]
+  X --> Y
 
-  R --> S[Aggregate Response Counters on Alert]
-  R --> T{Status NEED_HELP or HELP?}
-  T -->|Yes| U[Create Rescue Task]
-  T -->|No| V[No Task Creation]
+  Y --> Z[Aggregate Response Counters on Alert]
+  Y --> AA{Status NEED_HELP or HELP?}
+  AA -->|Yes| AB[Create Rescue Task]
+  AA -->|No| AC[No Task Creation]
 
-  U --> W[Task Appears in Dashboard TaskBoard]
-  V --> X[Dashboard Still Updates Response State]
+  AB --> AD[Task Appears in Dashboard TaskBoard]
+  AC --> AE[Dashboard Still Updates Response State]
 
-  W --> Y[Operator Assigns and Updates Task Status]
-  Y --> Z[Rescue Coordination and Closure]
+  AD --> AF[Operator Assigns and Updates Task Status]
+  AF --> AG[Rescue Coordination and Closure]
 
-  S --> AA[Dashboard Real-Time Panels Refresh]
-  AA --> AB[AlertStatus, ResponseList, DeliveryLogs, CoordinationMap]
-  AB --> Y
+  Z --> AH[Dashboard Real-Time Panels Refresh]
+  AH --> AI[AlertStatus, ResponseList, DeliveryLogs, CoordinationMap]
+  AI --> AF
 ```
 
 ## Firestore Data Model
@@ -252,9 +258,9 @@ Useful diagnostics:
 
 ## Deployment
 
-From backend:
+From repository root:
 
-- firebase deploy --only functions,firestore:rules
+- firebase deploy --config backend/firebase.json --only functions,firestore:rules
 
 Notes:
 - If Twilio secrets are placeholders, SMS/voice modules remain in mock mode.

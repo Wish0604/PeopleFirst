@@ -1,37 +1,19 @@
 import React from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
-import AlertList from './components/AlertList';
-import ResponseList from './components/ResponseList';
-import SummaryCards from './components/SummaryCards';
-import CoordinationMap from './components/CoordinationMap';
-import AlertManager from './features/alerts/AlertManager';
-import AlertStatus from './features/alerts/AlertStatus';
-import DeliveryLogs from './features/monitoring/DeliveryLogs';
-import TaskBoard from './features/monitoring/TaskBoard';
-import LogisticsDispatch from './features/monitoring/LogisticsDispatch';
+import ProtectedRoute from './components/ProtectedRoute';
+import { AUTHORITY_ROLES } from './constants/authorityRoles';
+import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
 
 export default function App() {
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div>
-          <h1>PeopleFirst Dashboard</h1>
-          <p className="muted">Real-time alerts and responses from Firestore</p>
-        </div>
-      </header>
-
-      <SummaryCards />
-
-      <main className="grid">
-        <AlertManager />
-        <AlertStatus />
-        <CoordinationMap />
-        <AlertList />
-        <DeliveryLogs />
-        <ResponseList />
-        <LogisticsDispatch />
-        <TaskBoard />
-      </main>
-    </div>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route element={<ProtectedRoute allowedRoles={AUTHORITY_ROLES} />}>
+        <Route path="/" element={<Dashboard />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

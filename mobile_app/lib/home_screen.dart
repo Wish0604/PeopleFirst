@@ -8,7 +8,6 @@ import 'core/theme/app_colors.dart';
 import 'core/services/local_storage_service.dart';
 import 'features/offline/local_rules_engine.dart';
 import 'features/offline/emergency_actions.dart';
-import 'login_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, this.onTabRequested});
@@ -47,7 +46,7 @@ class HomeScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Please log in again to submit response.')),
+              content: Text('Session unavailable. Please try again.')),
         );
       }
       return;
@@ -91,8 +90,11 @@ class HomeScreen extends StatelessWidget {
 
   Future<void> _signOut(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
+    await FirebaseAuth.instance.signInAnonymously();
     if (!context.mounted) return;
-    Navigator.of(context).pushReplacementNamed(LoginScreen.routeName);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Session reset successfully.')),
+    );
   }
 
   @override
@@ -104,7 +106,7 @@ class HomeScreen extends StatelessWidget {
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
-            color: AppColors.emergencyRed.withOpacity(0.2),
+            color: AppColors.emergencyRed.withValues(alpha: 0.2),
             border: const Border(
                 left: BorderSide(color: AppColors.emergencyRed, width: 8)),
             borderRadius: BorderRadius.circular(4),
@@ -232,7 +234,7 @@ class HomeScreen extends StatelessWidget {
             Text(
               'RECENT ALERTS',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 10,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 2,
@@ -257,7 +259,7 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Divider(color: Colors.white.withOpacity(0.1), height: 1),
+        Divider(color: Colors.white.withValues(alpha: 0.1), height: 1),
         const SizedBox(height: 16),
 
         // Alerts Feed Content (StreamBuilder)
@@ -281,6 +283,15 @@ class HomeScreen extends StatelessWidget {
                 final alertId = doc.id;
                 final message = (data['message'] ?? 'Alert') as String;
                 final riskLevel = (data['riskLevel'] ?? 'UNKNOWN') as String;
+                final riskPriority =
+                    (data['riskPriority'] ?? 'ROUTINE') as String;
+                final riskIntelligenceScore = data['riskIntelligenceScore'];
+                final riskIntelligenceReason =
+                    (data['riskIntelligenceReason'] ?? data['riskReason'] ?? '')
+                        as String;
+                final sourceZoneName = (data['sourceZoneName'] ??
+                    data['sourceZoneId'] ??
+                    'Unspecified') as String;
 
                 final rulesEngine = LocalRulesEngine();
                 final suggestedActions =
@@ -304,7 +315,7 @@ class HomeScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: cardColor.withOpacity(0.2),
+                          color: cardColor.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Icon(LucideIcons.alertTriangle,
@@ -322,10 +333,36 @@ class HomeScreen extends StatelessWidget {
                             Text(
                               suggestedActions.join(' • '),
                               style: TextStyle(
-                                  color: Colors.white.withOpacity(0.5),
+                                  color: Colors.white.withValues(alpha: 0.5),
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Priority: $riskPriority | Intelligence: ${riskIntelligenceScore ?? riskLevel}',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.7),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Zone: $sourceZoneName',
+                              style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600),
+                            ),
+                            if (riskIntelligenceReason.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                riskIntelligenceReason,
+                                style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             Row(
                               children: [
@@ -387,7 +424,7 @@ class HomeScreen extends StatelessWidget {
           height: 250,
           decoration: BoxDecoration(
             color: AppColors.surfaceContainer,
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             borderRadius: BorderRadius.circular(4),
             image: const DecorationImage(
               image: NetworkImage(
@@ -405,7 +442,8 @@ class HomeScreen extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppColors.surface,
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border:
+                        Border.all(color: Colors.white.withValues(alpha: 0.1)),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Column(
@@ -466,7 +504,7 @@ class HomeScreen extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppColors.surfaceContainer,
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Column(
@@ -501,7 +539,7 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(icon, color: color.withOpacity(0.5), size: 32),
+              Icon(icon, color: color.withValues(alpha: 0.5), size: 32),
             ],
           ),
           const SizedBox(height: 16),
@@ -520,7 +558,8 @@ class HomeScreen extends StatelessWidget {
                 child: Text(
                   bottomText,
                   style: TextStyle(
-                    color: bottomTextColor ?? Colors.white.withOpacity(0.7),
+                    color:
+                        bottomTextColor ?? Colors.white.withValues(alpha: 0.7),
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
                   ),
@@ -548,7 +587,7 @@ class HomeScreen extends StatelessWidget {
           height: 56,
           decoration: BoxDecoration(
             color: bgColor,
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Row(

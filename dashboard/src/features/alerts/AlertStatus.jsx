@@ -10,6 +10,11 @@ function formatTime(timestamp) {
   return timestamp.toDate().toLocaleString();
 }
 
+function getPriorityBadgeClass(priority) {
+  const normalized = (priority || 'ROUTINE').toLowerCase();
+  return `status-badge ${normalized}`;
+}
+
 export default function AlertStatus() {
   const alerts = useCollectionSnapshot('alerts');
   const responses = useCollectionSnapshot('responses');
@@ -77,6 +82,19 @@ export default function AlertStatus() {
             <p className="status-title">{status.latestAlert.title || 'Emergency Alert'}</p>
             <p>{status.latestAlert.message || 'No message'}</p>
             <p className="muted">Risk: {status.latestAlert.riskLevel || 'UNKNOWN'}</p>
+            <div className="row-inline">
+              <p className="muted" style={{ margin: 0 }}>Priority:</p>
+              <span className={getPriorityBadgeClass(status.latestAlert.riskPriority)}>
+                {(status.latestAlert.riskPriority || 'ROUTINE').toUpperCase()}
+              </span>
+            </div>
+            <p className="muted">
+              Intelligence Score: {status.latestAlert.riskIntelligenceScore ?? status.latestAlert.riskScore ?? 'N/A'}
+            </p>
+            <p className="muted">Zone: {status.latestAlert.sourceZoneName || status.latestAlert.sourceZoneId || 'Unspecified'}</p>
+            <p className="muted">
+              Intelligence Reason: {status.latestAlert.riskIntelligenceReason || status.latestAlert.riskReason || 'N/A'}
+            </p>
             <p className="muted">Time: {formatTime(status.latestAlert.createdAt)}</p>
           </div>
 
