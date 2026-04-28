@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   AlertTriangle, 
   MapPin, 
@@ -14,8 +14,45 @@ import {
   Plus
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
+
+function getPriorityLabel(priority) {
+  if (!priority) return 'MEDIUM';
+  if (priority.toUpperCase().includes('CRITICAL') || priority.toUpperCase().includes('EMERGENCY')) return 'CRITICAL';
+  if (priority.toUpperCase().includes('HIGH')) return 'HIGH';
+  return 'MEDIUM';
+}
+
+function formatLocation(location) {
+  if (!location) return 'Unknown';
+
+  if (typeof location === 'string') return location;
+
+  const latitude = location.latitude ?? location._lat;
+  const longitude = location.longitude ?? location._long;
+
+  if (typeof latitude === 'number' && typeof longitude === 'number') {
+    return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  }
+
+  return location.name || location.label || 'Unknown';
+}
 
 export default function RescueTeams() {
+  const firestoreTasks = useCollectionSnapshot('tasks');
+  const tasks = useMemo(() => {
+    return firestoreTasks.slice(0, 3).map(task => ({
+      id: task.id,
+      priority: getPriorityLabel(task.riskPriority),
+      eta: task.eta || '15m',
+      title: task.title || 'Task',
+      loc: formatLocation(task.location),
+      team: task.assignedTeam || 'Unassigned',
+      responders: task.responders?.length ? new Array(task.responders.length) : [],
+      unassigned: !task.assignedTeam
+    }));
+  }, [firestoreTasks]);
+  const activeTaskCount = firestoreTasks.length;
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -26,34 +63,27 @@ export default function RescueTeams() {
       <section className="w-80 border-r border-outline-variant bg-surface flex flex-col shrink-0">
         <div className="p-4 border-b border-outline-variant flex items-center justify-between">
           <h2 className="text-xl font-bold text-white tracking-tight">Active Tasks</h2>
-          <span className="bg-surface-container-high px-2 py-1 rounded text-[10px] font-black text-slate-500 uppercase">24 Active</span>
+          <span className="bg-surface-container-high px-2 py-1 rounded text-[10px] font-black text-slate-500 uppercase">{activeTaskCount} Active</span>
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <TaskCard 
-            priority="CRITICAL" 
-            eta="4m" 
-            title="Structural Collapse B-12" 
-            loc="4th Ave, Sector Alpha" 
-            team="Team Phoenix"
-            responders={['A', 'B']}
-            active
-          />
-          <TaskCard 
-            priority="HIGH" 
-            eta="12m" 
-            title="Flood Evacuation Z-4" 
-            loc="Riverside Dock, Sector Beta" 
-            team="Rescue Boat-02"
-            responders={['C']}
-          />
-          <TaskCard 
-            priority="MEDIUM" 
-            eta="22m" 
-            title="Supply Delivery S-09" 
-            loc="Central Shelter, Sector Gamma" 
-            unassigned
-          />
+          {tasks.length > 0 ? (
+            tasks.map((task, idx) => (
+              <TaskCard
+                key={task.id}
+                priority={task.priority}
+                eta={task.eta}
+                title={task.title}
+                loc={task.loc}
+                team={task.team}
+                responders={task.responders}
+                unassigned={task.unassigned}
+                active={idx === 0}
+              />
+            ))
+          ) : (
+            <div className="text-center py-8 text-slate-500 text-sm">No active tasks</div>
+          )}
         </div>
       </section>
 

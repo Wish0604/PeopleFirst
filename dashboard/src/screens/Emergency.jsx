@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
 import { AlertTriangle, Send, Phone, Radio, Users, MapPin, Clock, Eye, EyeOff } from 'lucide-react';
 import { motion } from 'motion/react';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { db } from '../firebase';
+import { useAuth } from '../context/AuthContext';
 
 export default function Emergency() {
   const [emergencyActive, setEmergencyActive] = useState(false);
   const [emergencyType, setEmergencyType] = useState('natural_disaster');
   const [showDetails, setShowDetails] = useState(false);
+  const [location, setLocation] = useState('');
+  const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState('');
+  const { user, profile } = useAuth();
 
   const emergencyTypes = [
     { id: 'natural_disaster', label: 'Natural Disaster', icon: '🌊' },
@@ -16,13 +24,45 @@ export default function Emergency() {
     { id: 'other', label: 'Other', icon: '⚠️' },
   ];
 
-  const declareEmergency = () => {
-    setEmergencyActive(true);
-    console.log(`Emergency declared: ${emergencyType}`);
+  const declareEmergency = async () => {
+    if (!location.trim() || !description.trim()) {
+      setStatus('Please provide location and description.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setStatus('Creating emergency alert...');
+
+    try {
+      const emergencyTypeLabel = emergencyTypes.find(t => t.id === emergencyType)?.label || 'Emergency';
+      
+      await addDoc(collection(db, 'alerts'), {
+        title: `${emergencyTypeLabel} - EMERGENCY DECLARED`,
+        message: description.trim(),
+        riskPriority: 'EMERGENCY',
+        riskLevel: 'CRITICAL',
+        type: emergencyType,
+        sourceZoneName: location.trim(),
+        declaredBy: profile?.email || user?.email || 'Authority',
+        declaredAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+      });
+
+      setEmergencyActive(true);
+      setStatus('Emergency protocol activated. All teams notified.');
+      setTimeout(() => setStatus(''), 3000);
+    } catch (error) {
+      setStatus(`Failed to declare emergency: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const cancelEmergency = () => {
     setEmergencyActive(false);
+    setLocation('');
+    setDescription('');
+    setStatus('');
   };
 
   return (
@@ -126,7 +166,10 @@ export default function Emergency() {
                 <input
                   type="text"
                   placeholder="Enter incident location"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
                   className="w-full bg-background border border-outline-variant rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                  disabled={isSubmitting}
                 />
               </div>
 
@@ -135,23 +178,37 @@ export default function Emergency() {
                 <textarea
                   placeholder="Provide incident details"
                   rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   className="w-full bg-background border border-outline-variant rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary"
+                  disabled={isSubmitting}
                 />
               </div>
 
               <div className="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg">
                 <AlertTriangle size={16} className="text-error flex-shrink-0" />
                 <p className="text-xs text-error font-bold">
-                  This action will activate emergency protocols and notify all response teams.
+                  This will activate emergency protocols and notify all response teams immediately.
                 </p>
               </div>
 
+              {status && (
+                <div className={`p-3 rounded-lg text-xs font-bold ${
+                  status.includes('Failed') 
+                    ? 'bg-error/10 text-error' 
+                    : 'bg-emerald-500/10 text-emerald-400'
+                }`}>
+                  {status}
+                </div>
+              )}
+
               <button
                 onClick={declareEmergency}
-                className="w-full px-6 py-3 bg-error hover:bg-error/90 text-on-error border border-error/50 rounded-lg text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                className="w-full px-6 py-3 bg-error hover:bg-error/90 disabled:opacity-50 text-on-error border border-error/50 rounded-lg text-sm font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2"
               >
                 <AlertTriangle size={16} />
-                Declare Emergency
+                {isSubmitting ? 'Declaring...' : 'Declare Emergency'}
               </button>
             </motion.div>
           </div>

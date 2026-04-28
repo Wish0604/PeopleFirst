@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { 
   AlertCircle, 
   Send, 
@@ -12,54 +12,77 @@ import {
   MapPin
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
+
+function formatTime(timestamp) {
+  if (!timestamp?.toDate) return 'moments ago';
+  const date = timestamp.toDate();
+  const now = new Date();
+  const diff = now - date;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'moments ago';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ago`;
+}
 
 export default function DashboardScreen() {
+  const alerts = useCollectionSnapshot('alerts');
+  const responses = useCollectionSnapshot('responses');
+  const deliveryLogs = useCollectionSnapshot('deliveryLogs');
+
+  const metrics = useMemo(() => {
+    const sent = deliveryLogs.filter(l => l.status === 'SENT').length;
+    const failed = deliveryLogs.filter(l => l.status === 'FAILED').length;
+    const sms = deliveryLogs.filter(l => l.channel === 'SMS' && l.status === 'SENT').length;
+    return { sent, failed, sms };
+  }, [deliveryLogs]);
+
+  const criticalAlerts = useMemo(() => {
+    return alerts
+      .filter(a => (a.riskPriority || 'ROUTINE').toUpperCase() !== 'ROUTINE')
+      .slice(0, 3);
+  }, [alerts]);
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="p-6 h-full flex flex-col gap-6 overflow-y-auto"
+      className="p-6 h-full flex flex-col gap-6 overflow-y-auto overflow-x-hidden"
     >
-      <div className="grid grid-cols-12 gap-6 h-full">
+      <div className="grid grid-cols-12 gap-6 h-full min-w-0">
         {/* Left Panel: Alert Feed */}
-        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4">
+        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-w-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold text-white tracking-tight">Active Alerts</h2>
-            <span className="px-2 py-1 bg-error/10 border border-error/30 text-error text-[10px] font-black rounded-full uppercase tracking-tighter">3 Critical</span>
+            <span className="px-2 py-1 bg-error/10 border border-error/30 text-error text-[10px] font-black rounded-full uppercase tracking-tighter">{criticalAlerts.length} Active</span>
           </div>
           
           <div className="flex-1 space-y-3">
-            <AlertCard 
-              priority="CRITICAL" 
-              time="2m ago" 
-              title="North Coastal Flood" 
-              desc="Rapid rise in water levels detected at Station 04. Immediate evacuation recommended." 
-              active
-            />
-            <AlertCard 
-              priority="HIGH" 
-              time="14m ago" 
-              title="High Wind Advisory" 
-              desc="Sustained winds exceeding 45mph in Sector B-9. Secure loose objects." 
-            />
-            <AlertCard 
-              priority="MEDIUM" 
-              time="1h ago" 
-              title="Traffic Congestion" 
-              desc="Major accident on I-95 Northbound. Emergency routes active." 
-              dim
-            />
+            {criticalAlerts.length > 0 ? (
+              criticalAlerts.map((alert, idx) => (
+                <AlertCard 
+                  key={alert.id}
+                  priority={alert.riskPriority || 'HIGH'}
+                  time={formatTime(alert.createdAt)}
+                  title={alert.title || 'Alert'}
+                  desc={alert.message || ''}
+                  active={idx === 0}
+                />
+              ))
+            ) : (
+              <div className="text-slate-400 text-sm p-4 text-center">No active alerts</div>
+            )}
             
             <button className="w-full py-4 text-[10px] font-black text-primary uppercase tracking-[0.2em] border border-primary/20 rounded-xl hover:bg-primary/5 transition-all">
-              View Archive
+              View All ({alerts.length})
             </button>
           </div>
         </div>
 
         {/* Right Panel: Grid Layout */}
-        <div className="col-span-12 lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-min">
+        <div className="col-span-12 lg:col-span-9 grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-min min-w-0">
           {/* Map Panel */}
-          <div className="md:col-span-2 bg-surface-container border border-outline-variant rounded-2xl overflow-hidden relative min-h-[400px]">
+          <div className="md:col-span-2 bg-surface-container border border-outline-variant rounded-2xl overflow-hidden relative min-h-[400px] min-w-0">
             <div className="absolute top-4 left-4 z-10 space-y-2">
               <div className="bg-background/80 backdrop-blur-md px-4 py-2 rounded-xl border border-outline-variant flex items-center gap-3">
                 <div className="w-3 h-3 bg-error rounded-full animate-pulse shadow-[0_0_10px_rgba(255,180,171,0.5)]" />
@@ -87,7 +110,7 @@ export default function DashboardScreen() {
           </div>
 
           {/* Alert Details */}
-          <div className="bg-surface-container border border-outline-variant rounded-2xl p-6">
+          <div className="bg-surface-container border border-outline-variant rounded-2xl p-6 min-w-0">
             <div className="flex justify-between items-start mb-8">
               <div>
                 <h2 className="text-xl font-bold text-white">Alert Detail</h2>
@@ -110,12 +133,12 @@ export default function DashboardScreen() {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 min-w-0">
               <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Control Panel</h4>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0">
                 <ControlButton icon={<Send size={16} />} label="Resend" color="primary" />
                 <ControlButton icon={<TrendingUp size={16} />} label="Escalate" color="tertiary" />
-                <button className="col-span-2 flex items-center justify-center gap-3 py-3 border border-outline-variant text-white font-bold rounded-xl hover:bg-surface-container-high transition-all active:scale-95 text-xs uppercase tracking-widest">
+                <button className="col-span-1 sm:col-span-2 w-full flex items-center justify-center gap-3 py-3 border border-outline-variant text-white font-bold rounded-xl hover:bg-surface-container-high transition-all active:scale-95 text-xs uppercase tracking-widest min-w-0">
                   <XCircle size={16} />
                   Cancel Alert
                 </button>
@@ -124,45 +147,39 @@ export default function DashboardScreen() {
           </div>
 
           {/* Delivery Metrics */}
-          <div className="flex flex-col gap-6">
-            <div className="bg-surface-container border border-outline-variant rounded-2xl p-6 flex-1">
+          <div className="flex flex-col gap-6 min-w-0">
+            <div className="bg-surface-container border border-outline-variant rounded-2xl p-6 flex-1 min-w-0">
               <h2 className="text-xl font-bold text-white mb-6">Delivery Status</h2>
               <div className="space-y-6">
-                <MetricBar label="Push Notification" value={98} status="Success" color="bg-emerald-500" />
-                <MetricBar label="SMS Gateway" value={74} status="Sending" color="bg-tertiary" />
-                <MetricBar label="Voice Automated" value={15} status="Failed" color="bg-error" />
+              <MetricBar label="Push Notification" value={metrics.sent} status="Sent" color="bg-emerald-500" />
+              <MetricBar label="SMS Gateway" value={metrics.sms} status="Sent" color="bg-tertiary" />
+              <MetricBar label="Failed" value={metrics.failed} status="Failed" color="bg-error" />
               </div>
             </div>
 
-            <div className="bg-surface-container border border-outline-variant rounded-xl p-4 grid grid-cols-2 gap-4">
-              <StatusIndicator label="FCM Node" status="Online" online />
-              <StatusIndicator label="SMS Gateway" status="Partial" />
+            <div className="bg-surface-container border border-outline-variant rounded-xl p-4 grid grid-cols-2 gap-4 min-w-0">
+              <StatusIndicator label="Total Alerts" status={alerts.length} online />
+              <StatusIndicator label="Total Responses" status={responses.length} />
             </div>
           </div>
 
           {/* Recent Activity Log */}
-          <div className="md:col-span-2 bg-surface-container border border-outline-variant rounded-2xl p-6">
+          <div className="md:col-span-2 bg-surface-container border border-outline-variant rounded-2xl p-6 min-w-0">
             <h2 className="text-xl font-bold text-white mb-6">Recent Activity Log</h2>
             <div className="space-y-4">
-              <ActivityItem 
-                icon={<Send size={14} />} 
-                text="Broadcasting initial Flood Alert to North Coastal Zone" 
-                time="14:22:10 - Admin Node 4" 
-                color="text-primary"
-              />
-              <ActivityItem 
-                icon={<MessageSquare size={14} />} 
-                text="Relay triggered to secondary SMS provider due to latency" 
-                time="14:25:45 - System Core" 
-                color="text-tertiary"
-              />
-              <ActivityItem 
-                icon={<AlertCircle size={14} />} 
-                text="Voice carrier bridge failed to initialize" 
-                time="14:28:12 - Telecom API" 
-                color="text-error"
-                last
-              />
+              {deliveryLogs.slice(0, 3).map((log, idx) => (
+                <ActivityItem
+                  key={log.id}
+                  icon={log.status === 'FAILED' ? <AlertCircle size={14} /> : <Send size={14} />}
+                  text={`${log.channel} delivery to ${log.recipientId || 'recipient'}: ${log.status}`}
+                  time={formatTime(log.createdAt)}
+                  color={log.status === 'FAILED' ? 'text-error' : 'text-primary'}
+                  last={idx === deliveryLogs.slice(0, 3).length - 1}
+                />
+              ))}
+              {deliveryLogs.length === 0 && (
+                <div className="text-slate-400 text-sm p-4 text-center">No delivery activity yet</div>
+              )}
             </div>
           </div>
         </div>
@@ -197,7 +214,7 @@ function ControlButton({ icon, label, color }) {
     tertiary: 'bg-tertiary text-on-tertiary shadow-tertiary/20'
   };
   return (
-    <button className={`flex items-center justify-center gap-3 py-3 rounded-xl transition-all active:scale-95 text-xs font-bold uppercase tracking-widest shadow-lg ${colorStyles[color]}`}>
+    <button className={`w-full min-w-0 flex items-center justify-center gap-3 py-3 rounded-xl transition-all active:scale-95 text-xs font-bold uppercase tracking-widest shadow-lg ${colorStyles[color]}`}>
       {icon}
       {label}
     </button>

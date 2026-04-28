@@ -1,17 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MapPin, ZoomIn, ZoomOut, Layers, Navigation } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
 
 export default function LocalMap() {
   const [zoom, setZoom] = useState(100);
   const [showLegend, setShowLegend] = useState(true);
-
-  const locations = [
-    { id: 1, name: 'Central Hub', type: 'shelter', x: 45, y: 50 },
-    { id: 2, name: 'North Station', type: 'emergency', x: 60, y: 30 },
-    { id: 3, name: 'South Medical', type: 'medical', x: 40, y: 70 },
-    { id: 4, name: 'East Depot', type: 'supply', x: 75, y: 45 },
-  ];
+  const zones = useCollectionSnapshot('zones');
+  
+  const locations = useMemo(() => {
+    return zones.map((zone, idx) => ({
+      id: zone.id,
+      name: zone.name || 'Zone',
+      type: zone.riskLevel?.toLowerCase() === 'critical' ? 'emergency' : 'shelter',
+      x: 30 + (idx % 3) * 20 + Math.random() * 10,
+      y: 40 + Math.floor(idx / 3) * 30 + Math.random() * 10
+    }));
+  }, [zones]);
 
   const getMarkerColor = (type) => {
     switch (type) {

@@ -112,7 +112,7 @@ export default function Dashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col relative overflow-hidden">
+      <main className="flex-1 min-w-0 flex flex-col relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none opacity-30 z-10" style={{ background: 'linear-gradient(to bottom, transparent, rgba(173, 198, 255, 0.05), transparent)', backgroundSize: '100% 200%', animation: 'scan 8s linear infinite' }} />
         <AnimatePresence mode="wait">
           {screen === 'dashboard' && <NewDashboardScreen key="dashboard" />}

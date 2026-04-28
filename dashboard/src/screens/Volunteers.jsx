@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Users, 
   Search, 
@@ -21,9 +21,15 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
 
 export default function Volunteers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const allUsers = useCollectionSnapshot('users');
+  const volunteers = useMemo(() => {
+    return allUsers.filter(u => ['COLLECTOR', 'NDRF', 'VOLUNTEER'].includes(u.role)).slice(0, 3);
+  }, [allUsers]);
+  const volunteerCount = allUsers.filter(u => ['COLLECTOR', 'NDRF', 'VOLUNTEER'].includes(u.role)).length;
 
   return (
     <motion.div 
@@ -39,7 +45,7 @@ export default function Volunteers() {
         </div>
         <div className="flex items-center gap-4 bg-surface-container border border-outline-variant px-5 py-3 rounded-2xl">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-          <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Active: 142</span>
+          <span className="text-[11px] font-black text-slate-300 uppercase tracking-widest">Active: {volunteerCount}</span>
         </div>
       </div>
 
@@ -120,36 +126,27 @@ export default function Volunteers() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/30 text-sm">
-                  <VolunteerRow 
-                    name="Marcus Thorne" 
-                    loc="Harbor Dist." 
-                    status="Verified" 
-                    skills={['Medical']} 
-                    avail="Available" 
-                    sync="2m ago" 
-                  />
-                  <VolunteerRow 
-                    name="Elena Rodriguez" 
-                    loc="Central Station" 
-                    status="Pending" 
-                    skills={['Logistics']} 
-                    avail="Busy" 
-                    sync="14m ago" 
-                  />
-                  <VolunteerRow 
-                    name="Kenji Sato" 
-                    loc="Warehouse Dist." 
-                    status="Verified" 
-                    skills={['Medical']} 
-                    avail="Available" 
-                    sync="Just now" 
-                  />
+                  {volunteers.length > 0 ? (
+                    volunteers.map((vol) => (
+                      <VolunteerRow 
+                        key={vol.id}
+                        name={vol.email?.split('@')[0] || 'Volunteer'}
+                        loc={vol.zoneId || 'Unassigned'}
+                        status="Verified"
+                        skills={[vol.role || 'Support']}
+                        avail="Available"
+                        sync="Live"
+                      />
+                    ))
+                  ) : (
+                    <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No volunteers found</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
 
             <div className="p-6 border-t border-outline-variant flex items-center justify-between bg-surface-container-high/20">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Showing 1-3 of 142 volunteers</span>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Showing 1-{volunteers.length} of {volunteerCount} volunteers</span>
               <div className="flex items-center gap-2">
                 <button className="p-2 rounded-lg border border-outline-variant text-slate-600 hover:text-white transition-colors disabled:opacity-30" disabled>
                   <ChevronLeft size={16} />

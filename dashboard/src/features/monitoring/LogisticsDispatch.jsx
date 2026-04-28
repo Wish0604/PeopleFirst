@@ -4,6 +4,21 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useCollectionSnapshot } from '../../hooks/useCollectionSnapshot';
 
+function formatLocation(location) {
+  if (!location) return 'Unknown';
+
+  if (typeof location === 'string') return location;
+
+  const latitude = location.latitude ?? location._lat;
+  const longitude = location.longitude ?? location._long;
+
+  if (typeof latitude === 'number' && typeof longitude === 'number') {
+    return `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  }
+
+  return location.name || location.label || 'Unknown';
+}
+
 export default function LogisticsDispatch() {
   const responses = useCollectionSnapshot('responses');
   const [dispatchingId, setDispatchingId] = useState('');
@@ -85,7 +100,7 @@ export default function LogisticsDispatch() {
             </div>
             
             <div className="muted" style={{ margin: '8px 0' }}>
-              Loc: {r.location ? `${r.location.latitude?.toFixed(4) || r.location._lat?.toFixed(4)}, ${r.location.longitude?.toFixed(4) || r.location._long?.toFixed(4)}` : 'Unknown'}
+              Loc: {formatLocation(r.location)}
             </div>
 
             <div className="task-actions" style={{ gridTemplateColumns: '1fr' }}>
