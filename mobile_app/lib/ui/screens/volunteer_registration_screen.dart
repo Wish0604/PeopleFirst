@@ -157,9 +157,7 @@ class _VolunteerRegistrationScreenState
       final user = await _ensureUser();
 
       Position? location = _location;
-      if (location == null) {
-        location = await _readCurrentLocation();
-      }
+      location ??= await _readCurrentLocation();
 
       final volunteerData = <String, dynamic>{
         'uid': user.uid,
@@ -286,7 +284,7 @@ class _VolunteerRegistrationScreenState
                   child: _FieldLabel(
                     label: 'Gender',
                     child: DropdownButtonFormField<String>(
-                      value: _gender,
+                      initialValue: _gender,
                       items: const [
                         DropdownMenuItem(
                             value: 'Female', child: Text('Female')),
@@ -374,7 +372,7 @@ class _VolunteerRegistrationScreenState
             _FieldLabel(
               label: 'Vehicle',
               child: DropdownButtonFormField<String>(
-                value: _vehicle,
+                initialValue: _vehicle,
                 items: _vehicleOptions
                     .map((vehicle) =>
                         DropdownMenuItem(value: vehicle, child: Text(vehicle)))

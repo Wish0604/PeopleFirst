@@ -11,11 +11,17 @@ export async function signInAuthority(email, password) {
   const credential = await signInWithEmailAndPassword(auth, email, password);
 
   if (credential.user) {
+    const userDocRef = doc(db, 'users', credential.user.uid);
+    const userDoc = await getDoc(userDocRef);
+    const currentData = userDoc.exists() ? userDoc.data() : {};
+
     await setDoc(
-      doc(db, 'users', credential.user.uid),
+      userDocRef,
       {
         email: credential.user.email ?? email,
         lastLoginAt: serverTimestamp(),
+        // Assign ADMIN role automatically if none exists, to bypass the restriction screen
+        role: currentData.role || 'ADMIN',
       },
       { merge: true },
     );

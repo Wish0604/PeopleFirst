@@ -29,7 +29,9 @@ service cloud.firestore {
     }
 
     match /volunteers/{volunteerId} {
-      allow read: if request.auth != null && request.auth.uid == volunteerId;
+      // Allow any logged-in user (including authorities) to read volunteer profiles
+      allow read: if request.auth != null;
+      // Only the volunteer can create/update their own profile
       allow create, update: if request.auth != null && request.auth.uid == volunteerId;
       allow delete: if false;
     }
