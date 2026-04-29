@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   AlertTriangle, 
   MapPin, 
@@ -10,8 +10,7 @@ import {
   Activity, 
   Package, 
   Waves,
-  Zap,
-  Plus
+  Zap
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
@@ -42,6 +41,7 @@ function formatLocation(location) {
 }
 
 export default function RescueTeams() {
+  const [layerToggles, setLayerToggles] = useState({ zones: true, teams: true, tasks: true });
   const firestoreTasks = useCollectionSnapshot('tasks');
   const firestoreUsers = useCollectionSnapshot('users');
   const firestoreShelters = useCollectionSnapshot('shelters');
@@ -111,8 +111,8 @@ export default function RescueTeams() {
 
   async function dispatchResource(label) {
     try {
-      await addDoc(collection(db, 'dispatches'), {
-        resource: label,
+      await addDoc(collection(db, 'dispatch_logs'), {
+        resourceType: label,
         status: 'REQUESTED',
         createdAt: serverTimestamp(),
         source: 'dashboard-ui',
@@ -128,14 +128,18 @@ export default function RescueTeams() {
     shelters: shelterRows.length,
   };
 
+  function toggleLayer(key) {
+    setLayerToggles((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="flex h-full"
+      className="grid h-full gap-4 grid-cols-1 lg:grid-cols-[180px_minmax(0,1fr)_180px]"
     >
       {/* Left: Task List Panel */}
-      <section className="w-80 border-r border-outline-variant bg-surface flex flex-col shrink-0">
+      <section className="border border-outline-variant rounded-2xl bg-surface flex flex-col overflow-y-auto min-h-[280px]">
         <div className="p-4 border-b border-outline-variant flex items-center justify-between">
           <h2 className="text-xl font-bold text-white tracking-tight">Active Tasks</h2>
           <span className="bg-surface-container-high px-2 py-1 rounded text-[10px] font-black text-slate-500 uppercase">{activeTaskCount} Active</span>
@@ -164,7 +168,7 @@ export default function RescueTeams() {
       </section>
 
       {/* Center: Map Panel */}
-      <section className="flex-1 relative bg-[#0B1220] overflow-hidden">
+      <section className="relative bg-[#0B1220] overflow-hidden border border-outline-variant rounded-2xl min-h-[420px]">
         {/* Map Background */}
         <div className="absolute inset-0 opacity-20 grayscale brightness-50">
           <img 
@@ -184,119 +188,118 @@ export default function RescueTeams() {
               </div>
             </div>
 
-            <div className="bg-surface-container/90 backdrop-blur border border-outline-variant px-6 py-3 rounded-2xl pointer-events-auto flex items-center gap-6">
-              <StatusBadge color="bg-error" label={activeAlerts[0]?.sourceZoneName || activeAlerts[0]?.sourceZoneId || 'Hot Zone'} />
-              <StatusBadge color="bg-primary" label={`${operationsSummary.volunteers} Teams`} />
-              <StatusBadge color="bg-secondary" label={`${activeTaskCount} Tasks`} />
+            <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-2 rounded-2xl pointer-events-auto flex items-center gap-2">
+              <button
+                onClick={() => toggleLayer('zones')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${layerToggles.zones ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-300 hover:bg-surface-container-high'}`}
+              >
+                Zones
+              </button>
+              <button
+                onClick={() => toggleLayer('teams')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${layerToggles.teams ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-300 hover:bg-surface-container-high'}`}
+              >
+                Teams
+              </button>
+              <button
+                onClick={() => toggleLayer('tasks')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${layerToggles.tasks ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-300 hover:bg-surface-container-high'}`}
+              >
+                Tasks
+              </button>
             </div>
           </div>
 
-          {/* Markers */}
-          <motion.div 
-            animate={{ scale: [1, 1.1, 1] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className="absolute top-[30%] left-[40%] pointer-events-auto flex flex-col items-center"
-          >
-            <div className="bg-error p-3 rounded-full shadow-lg shadow-error/40 text-on-error">
-              <AlertTriangle size={20} />
-            </div>
-            <div className="mt-3 bg-background border border-error px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest whitespace-nowrap">
-              {activeAlerts[0]?.title || activeAlerts[0]?.riskType || 'Live Incident'}
-            </div>
-          </motion.div>
-
-          <div className="absolute top-[55%] left-[65%] pointer-events-auto flex flex-col items-center">
-            <div className="bg-primary p-3 rounded-full shadow-lg text-on-primary">
-              <Ambulance size={20} />
-            </div>
-            <div className="mt-3 bg-background border border-primary px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest whitespace-nowrap">
-              {tasks[0]?.team !== 'Unassigned' ? `${tasks[0]?.team} (ACTIVE)` : 'Rescue Team Alpha'}
-            </div>
-          </div>
-
-          <div className="absolute top-[20%] left-[75%] pointer-events-auto">
-            <div className="bg-surface-container border border-outline px-4 py-3 rounded-xl shadow-2xl flex flex-col gap-2 min-w-[140px]">
-              <div className="flex items-center gap-3">
-                <Home size={18} className="text-white" />
-                <span className="text-[10px] font-black text-white uppercase tracking-wider">{firestoreShelters[0]?.name || 'Shelter A'}</span>
+          {/* Markers controlled by map toggles */}
+          {layerToggles.zones && (
+            <motion.div
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ repeat: Infinity, duration: 2 }}
+              className="absolute top-[30%] left-[40%] pointer-events-auto flex flex-col items-center"
+            >
+              <div className="bg-error p-3 rounded-full shadow-lg shadow-error/40 text-on-error">
+                <AlertTriangle size={20} />
               </div>
-              <div className="w-full bg-background h-2 rounded-full overflow-hidden">
-                <div className="bg-error h-full" style={{ width: `${shelterRows[0]?.value || 0}%` }} />
+              <div className="mt-3 max-w-[220px] bg-background border border-error px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest truncate text-center">
+                {activeAlerts[0]?.title || activeAlerts[0]?.riskType || 'Live Incident'}
               </div>
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{shelterRows[0]?.total || '0 / 0'} Capacity</span>
+            </motion.div>
+          )}
+
+          {layerToggles.teams && (
+            <div className="absolute top-[55%] left-[58%] pointer-events-auto flex flex-col items-center">
+              <div className="bg-primary p-3 rounded-full shadow-lg text-on-primary">
+                <Ambulance size={20} />
+              </div>
+              <div className="mt-3 max-w-[220px] bg-background border border-primary px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest truncate text-center">
+                {tasks[0]?.team !== 'Unassigned' ? `${tasks[0]?.team} (ACTIVE)` : 'Rescue Team Alpha'}
+              </div>
             </div>
-          </div>
+          )}
+
+          {layerToggles.tasks && (
+            <div className="absolute top-[48%] left-[30%] pointer-events-auto flex flex-col items-center">
+              <div className="bg-tertiary p-3 rounded-full shadow-lg text-on-tertiary">
+                <MapPin size={20} />
+              </div>
+              <div className="mt-3 max-w-[220px] bg-background border border-tertiary px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest truncate text-center">
+                {tasks[0]?.title || 'Rescue Task'}
+              </div>
+            </div>
+          )}
+
+          {layerToggles.zones && (
+            <div className="absolute top-[20%] right-6 pointer-events-auto">
+              <div className="bg-surface-container border border-outline px-4 py-3 rounded-xl shadow-2xl flex flex-col gap-2 min-w-[140px] max-w-[180px]">
+                <div className="flex items-center gap-3">
+                  <Home size={18} className="text-white" />
+                  <span className="text-[10px] font-black text-white uppercase tracking-wider truncate">{firestoreShelters[0]?.name || 'Shelter A'}</span>
+                </div>
+                <div className="w-full bg-background h-2 rounded-full overflow-hidden">
+                  <div className="bg-error h-full" style={{ width: `${shelterRows[0]?.value || 0}%` }} />
+                </div>
+                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest truncate">{shelterRows[0]?.total || '0 / 0'} Capacity</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bottom Status Bar */}
-        <div className="absolute bottom-6 left-6 right-6 z-20 flex justify-between pointer-events-none">
-          <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-6 rounded-2xl pointer-events-auto flex items-center gap-10">
-            <div className="flex flex-col">
+        <div className="absolute bottom-6 left-6 right-6 z-20 flex items-end gap-3 pointer-events-none">
+          <div className="flex-1 min-w-0 bg-surface-container/90 backdrop-blur border border-outline-variant p-4 rounded-2xl pointer-events-auto grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="flex flex-col min-w-0">
               <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Current Load</span>
               <div className="flex items-center gap-3">
                 <CloudRain size={20} className="text-primary" />
-                <span className="text-sm font-bold text-white">{operationsSummary.activeAlerts} alerts, {activeTaskCount} tasks</span>
+                <span className="text-sm font-bold text-white truncate">{operationsSummary.activeAlerts} alerts, {activeTaskCount} tasks</span>
               </div>
             </div>
-            <div className="h-10 w-px bg-outline-variant" />
-            <div className="flex flex-col">
+            <div className="flex flex-col min-w-0 sm:border-l sm:border-outline-variant sm:pl-4">
               <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Volunteer Pool</span>
-              <span className="text-sm font-bold text-tertiary">{operationsSummary.volunteers} available</span>
+              <span className="text-sm font-bold text-tertiary truncate">{operationsSummary.volunteers} available</span>
             </div>
-            <div className="h-10 w-px bg-outline-variant" />
-            <div className="flex flex-col">
+            <div className="flex flex-col min-w-0 sm:border-l sm:border-outline-variant sm:pl-4">
               <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Shelter Coverage</span>
-              <span className="text-sm font-bold text-white">{operationsSummary.shelters} live shelters</span>
+              <span className="text-sm font-bold text-white truncate">{operationsSummary.shelters} live shelters</span>
             </div>
           </div>
 
-          <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-1 rounded-xl pointer-events-auto flex items-center">
+          <div className="shrink-0 bg-surface-container/90 backdrop-blur border border-outline-variant p-1 rounded-xl pointer-events-auto flex items-center">
             <button className="px-5 py-2 hover:bg-surface-container-high rounded-lg text-xs font-bold text-white">2D</button>
             <button className="px-5 py-2 bg-primary/20 text-primary rounded-lg text-xs font-black">3D</button>
           </div>
         </div>
       </section>
 
-      {/* Right: Utility Panel */}
-      <aside className="w-96 bg-surface border-l border-outline-variant flex flex-col shrink-0 overflow-y-auto">
-        <div className="p-6 border-b border-outline-variant">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-white tracking-tight">Nearest Volunteers</h2>
-            <button className="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:underline">View All</button>
-          </div>
-          <div className="space-y-3">
-            {liveVolunteers.length > 0 ? (
-              liveVolunteers.map((volunteer) => (
-                <VolunteerItem key={volunteer.id} name={volunteer.name} dist={volunteer.dist} skills={volunteer.skills} />
-              ))
-            ) : (
-              <div className="text-sm text-slate-500">No live volunteers found</div>
-            )}
-          </div>
-        </div>
-
-        <div className="p-6 space-y-8">
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-white tracking-tight">Shelter Capacity</h2>
-            <div className="space-y-4">
-              {shelterRows.length > 0 ? (
-                shelterRows.map((shelter) => (
-                  <ShelterCard key={shelter.id} name={shelter.name} value={shelter.value} total={shelter.total} danger={shelter.danger} />
-                ))
-              ) : (
-                <div className="text-sm text-slate-500">No shelter data available</div>
-              )}
-            </div>
-          </div>
-
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-white tracking-tight">Dispatch Resources</h2>
-            <div className="grid grid-cols-2 gap-3">
-              <DispatchButton icon={<Activity size={20} />} label="Medical Kit" onClick={() => dispatchResource('Medical Kit')} />
-              <DispatchButton icon={<Package size={20} />} label="Ration Packs" onClick={() => dispatchResource('Ration Packs')} />
-              <DispatchButton icon={<Waves size={20} />} label="Water Tanker" onClick={() => dispatchResource('Water Tanker')} />
-              <DispatchButton icon={<Zap size={20} />} label="Power Gen" onClick={() => dispatchResource('Power Gen')} />
-            </div>
+      {/* Right: Dispatch Panel */}
+      <aside className="bg-surface border border-outline-variant rounded-2xl flex flex-col overflow-y-auto min-h-[280px]">
+        <div className="p-6 space-y-6">
+          <h2 className="text-xl font-bold text-white tracking-tight">Dispatch Resources</h2>
+          <div className="grid grid-cols-2 gap-3">
+            <DispatchButton icon={<Activity size={20} />} label="Medical Kit" onClick={() => dispatchResource('Medical Kit')} />
+            <DispatchButton icon={<Package size={20} />} label="Ration Packs" onClick={() => dispatchResource('Ration Packs')} />
+            <DispatchButton icon={<Waves size={20} />} label="Water Tanker" onClick={() => dispatchResource('Water Tanker')} />
+            <DispatchButton icon={<Zap size={20} />} label="Power Gen" onClick={() => dispatchResource('Power Gen')} />
           </div>
         </div>
       </aside>
@@ -342,66 +345,6 @@ function TaskCard({ priority, eta, title, loc, team, responders, active, unassig
             <span className="text-[10px] font-black text-primary uppercase tracking-widest">{team}</span>
           </>
         )}
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ color, label }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className={`w-3 h-3 rounded-full ${color}`} />
-      <span className="text-[10px] font-bold text-white uppercase tracking-widest">{label}</span>
-    </div>
-  );
-}
-
-function VolunteerItem({ name, dist, skills }) {
-  return (
-    <div className="flex items-center gap-4 p-3 bg-surface-container-low border border-outline-variant rounded-xl group hover:bg-surface-container-high transition-colors cursor-pointer">
-      <div className="relative">
-        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center grayscale group-hover:grayscale-0 transition-all border border-outline-variant">
-          <Users size={18} className="text-slate-400" />
-        </div>
-        <div className="absolute bottom-0 right-0 w-3 h-3 bg-primary border-2 border-surface rounded-full" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex justify-between items-start">
-          <p className="text-sm font-bold text-white truncate">{name}</p>
-          <span className="text-[10px] font-bold text-slate-500">{dist}</span>
-        </div>
-        <div className="flex gap-2 flex-wrap mt-1">
-          {skills.map((s) => (
-            <span key={s} className="text-[9px] font-bold px-2 py-0.5 bg-surface-container-high text-slate-400 rounded-md border border-outline-variant transition-colors group-hover:text-primary group-hover:border-primary/30">
-              {s}
-            </span>
-          ))}
-        </div>
-      </div>
-      <button className="text-primary hover:scale-110 active:scale-95 transition-all">
-        <Plus size={20} />
-      </button>
-    </div>
-  );
-}
-
-function ShelterCard({ name, value, total, danger }) {
-  return (
-    <div className="bg-surface-container-low border border-outline-variant p-5 rounded-2xl space-y-4">
-      <div className="flex justify-between items-center">
-        <span className="text-sm font-bold text-white">{name}</span>
-        <span className={`text-xs font-black ${danger ? 'text-error' : 'text-primary'}`}>{value}%</span>
-      </div>
-      <div className="w-full bg-background h-2 rounded-full overflow-hidden">
-        <motion.div 
-          initial={{ width: 0 }}
-          animate={{ width: `${value}%` }}
-          className={`h-full ${danger ? 'bg-error shadow-[0_0_10px_rgba(255,180,171,0.5)]' : 'bg-primary'}`} 
-        />
-      </div>
-      <div className="flex justify-between items-center">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{total} Occupied</span>
-        <button className="text-[10px] font-black text-primary uppercase tracking-widest hover:underline">Redirect Flow</button>
       </div>
     </div>
   );

@@ -165,7 +165,6 @@ export default function DashboardScreen() {
       className="p-6 h-full flex flex-col gap-6 overflow-y-auto overflow-x-hidden"
     >
       <div className="grid grid-cols-12 gap-6 h-full min-w-0">
-        {/* Left Panel: Impact Zone */}
         <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-w-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold text-white tracking-tight">
@@ -228,7 +227,6 @@ export default function DashboardScreen() {
           </div>
         </div>
 
-        {/* Center Map Panel */}
         <div className="col-span-12 lg:col-span-6 bg-surface-container border border-outline-variant rounded-2xl overflow-hidden relative min-h-[400px] min-w-0">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.25),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(255,180,171,0.18),_transparent_32%),linear-gradient(180deg,_rgba(11,18,32,0.96),_rgba(11,18,32,0.82))]" />
 
@@ -269,105 +267,105 @@ export default function DashboardScreen() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-outline-variant bg-background/70 backdrop-blur-md p-5 space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Latest Response</p>
-                  <p className="mt-1 text-base font-semibold text-white truncate">{latestResponse?.userId || latestResponse?.id || 'No response yet'}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Status</p>
-                  <p className="mt-1 text-sm font-semibold text-primary">{latestResponse?.status || 'Waiting'}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="rounded-xl border border-outline-variant bg-surface-container/60 p-3">
-                  <p className="text-slate-500 uppercase tracking-widest font-black text-[9px]">Zone</p>
-                  <p className="mt-2 text-white font-semibold truncate">{latestResponse?.sourceZoneName || latestResponse?.sourceZoneId || 'N/A'}</p>
-                </div>
-                <div className="rounded-xl border border-outline-variant bg-surface-container/60 p-3">
-                  <p className="text-slate-500 uppercase tracking-widest font-black text-[9px]">Coordinates</p>
-                  <p className="mt-2 text-white font-semibold truncate">
-                    {latestResponse?.location?.latitude ?? latestResponse?.location?._lat ?? '—'}, {latestResponse?.location?.longitude ?? latestResponse?.location?._long ?? '—'}
-                  </p>
-                </div>
-              </div>
-            </div>
+            {/* Latest Response removed per request */}
           </div>
         </div>
 
-        {/* Right Rail: Summary / Delivery / Actions */}
-        <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-w-0">
-          <section className="bg-[#0B1A2B] rounded-2xl p-5 space-y-4 border border-outline-variant/70 min-w-0">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-white truncate">{primaryAlert?.title || 'Flood Alert'}</h2>
-                <p className="text-sm text-slate-400 truncate">{primaryAlert?.sourceZoneName || 'North Coastal Zone'}</p>
+        {/* Right Rail turned into a 3-column compact rail: Alert Summary | Delivery Status | Actions */}
+        <div className="col-span-12 lg:col-span-3 min-w-0">
+          <div className="p-4">
+            <div className="grid grid-cols-3 gap-4 items-stretch">
+
+              {/* 1. ALERT */}
+              <div className="h-full">
+                <section className="bg-[#0B1A2B] rounded-2xl p-5 space-y-4 border border-outline-variant/70 min-w-0 h-full flex flex-col justify-between">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-semibold text-white truncate">{primaryAlert?.title || 'Flood Alert'}</h2>
+                      <p className="text-sm text-slate-400 truncate">{primaryAlert?.sourceZoneName || 'North Coastal Zone'}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className={`text-4xl font-black leading-none ${alertTone}`}>{alertScore}</div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 text-right">{alertToneLabel}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/50 bg-background/40 px-4 py-3">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Alert ID</p>
+                      <p className="text-sm font-semibold text-white">{primaryAlert?.id ? `#${primaryAlert.id}` : '#FL-2023-094'}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Time</p>
+                      <p className="text-sm font-semibold text-white">{formatTime(primaryAlert?.createdAt)}</p>
+                    </div>
+                  </div>
+                </section>
               </div>
-              <div className="text-right shrink-0">
-                <div className={`text-4xl font-black leading-none ${alertTone}`}>{alertScore}</div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1 text-right">{alertToneLabel}</p>
+
+              {/* 2. DELIVERY */}
+              <div className="h-full">
+                <section className="bg-[#0B1A2B] rounded-2xl p-5 space-y-3 border border-outline-variant/70 min-w-0 h-full flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                      <Send size={15} className="text-primary" />
+                      Delivery Status
+                    </h3>
+
+                    <div className="mt-3 space-y-2">
+                      {deliveryRows.map((row) => (
+                        <div key={row.label} className="flex items-center justify-between gap-4 text-sm">
+                          <span className="text-slate-300 truncate">{row.label}</span>
+                          <span className={`inline-flex items-center gap-1.5 font-semibold ${row.tone}`}>
+                            {row.icon}
+                            {row.status === 'SENT' ? 'Delivered' : row.status === 'FAILED' ? 'Failed' : 'Pending'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-outline-variant/50 text-[10px] text-slate-500 uppercase tracking-[0.2em]">
+                    Delivery loop: alert → channel dispatch → response tracking
+                  </div>
+                </section>
               </div>
+
+              {/* 3. ACTIONS */}
+              <div className="h-full">
+                <section className="bg-[#0B1A2B] rounded-2xl p-5 space-y-4 border border-outline-variant/70 min-w-0 h-full flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                      <ShieldAlert size={15} className="text-tertiary" />
+                      Actions
+                    </h3>
+                  </div>
+
+                  <div className="space-y-3">
+                    <button onClick={handleResend} disabled={actionLoading.resend} aria-busy={actionLoading.resend} className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
+                      <Send size={16} />
+                      {actionLoading.resend ? 'Resending…' : 'Resend Alert'}
+                    </button>
+
+                    <button onClick={handleEscalate} disabled={actionLoading.escalate} aria-busy={actionLoading.escalate} className="w-full bg-yellow-500 hover:bg-yellow-600 py-2 rounded-xl text-[#0B1220] font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
+                      <TrendingUp size={16} />
+                      {actionLoading.escalate ? 'Escalating…' : 'Escalate'}
+                    </button>
+
+                    <button onClick={handleCancel} disabled={actionLoading.cancel} aria-busy={actionLoading.cancel} className="w-full bg-red-600 hover:bg-red-700 py-2 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
+                      <XCircle size={16} />
+                      {actionLoading.cancel ? 'Cancelling…' : 'Cancel Alert'}
+                    </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-outline-variant/50 text-[10px] text-slate-400">
+                    Result feed: {responses.length} responses captured
+                  </div>
+                </section>
+              </div>
+
             </div>
-
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-outline-variant/50 bg-background/40 px-4 py-3">
-              <div>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Alert ID</p>
-                <p className="text-sm font-semibold text-white">{primaryAlert?.id ? `#${primaryAlert.id}` : '#FL-2023-094'}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Time</p>
-                <p className="text-sm font-semibold text-white">{formatTime(primaryAlert?.createdAt)}</p>
-              </div>
-            </div>
-          </section>
-
-          <section className="bg-[#0B1A2B] rounded-2xl p-5 space-y-3 border border-outline-variant/70 min-w-0">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <Send size={15} className="text-primary" />
-              Delivery Status
-            </h3>
-
-            {deliveryRows.map((row) => (
-              <div key={row.label} className="flex items-center justify-between gap-4 text-sm">
-                <span className="text-slate-300 truncate">{row.label}</span>
-                <span className={`inline-flex items-center gap-1.5 font-semibold ${row.tone}`}>
-                  {row.icon}
-                  {row.status === 'SENT' ? 'Delivered' : row.status === 'FAILED' ? 'Failed' : 'Pending'}
-                </span>
-              </div>
-            ))}
-
-            <div className="pt-2 border-t border-outline-variant/50 text-[10px] text-slate-500 uppercase tracking-[0.2em]">
-              Delivery loop: alert → channel dispatch → response tracking
-            </div>
-          </section>
-
-          <section className="bg-[#0B1A2B] rounded-2xl p-5 space-y-4 border border-outline-variant/70 min-w-0">
-            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-              <ShieldAlert size={15} className="text-tertiary" />
-              Actions
-            </h3>
-
-            <button onClick={handleResend} disabled={actionLoading.resend} aria-busy={actionLoading.resend} className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-              <Send size={16} />
-              {actionLoading.resend ? 'Resending…' : 'Resend Alert'}
-            </button>
-
-            <button onClick={handleEscalate} disabled={actionLoading.escalate} aria-busy={actionLoading.escalate} className="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded-xl text-[#0B1220] font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-              <TrendingUp size={16} />
-              {actionLoading.escalate ? 'Escalating…' : 'Escalate'}
-            </button>
-
-            <button onClick={handleCancel} disabled={actionLoading.cancel} aria-busy={actionLoading.cancel} className="w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-              <XCircle size={16} />
-              {actionLoading.cancel ? 'Cancelling…' : 'Cancel Alert'}
-            </button>
-
-            <div className="pt-2 border-t border-outline-variant/50 text-[10px] text-slate-400">
-              Result feed: {responses.length} responses captured
-            </div>
-          </section>
+          </div>
         </div>
       </div>
     </motion.div>
