@@ -1,6 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { AlertTriangle, X, Bell, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+
+import { db } from '../firebase';
 import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
 
 function formatTime(timestamp) {
@@ -30,9 +33,25 @@ export default function Alerts() {
     }));
   }, [firestoreAlerts]);
 
-  const dismissAlert = (id) => {
-    console.log(`Alert ${id} archived (permanent delete not implemented)`);
-  };
+  const dismissAlert = useCallback(async (id) => {
+    try {
+      await updateDoc(doc(db, 'alerts', id), {
+        status: 'RESOLVED',
+        resolvedAt: serverTimestamp(),
+        resolvedBy: 'dashboard-ui',
+      });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'RESOLVE_ALERT',
+        alertId: id,
+        actor: 'dashboard-ui',
+        outcome: 'UPDATED_ALERT',
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Alert resolution failed', error);
+    }
+  }, []);
 
   const getPriorityColor = (priority) => {
     switch (priority) {

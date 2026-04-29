@@ -14,6 +14,9 @@ import {
   Plus
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+
+import { db } from '../firebase';
 import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
 
 function getPriorityLabel(priority) {
@@ -40,6 +43,38 @@ function formatLocation(location) {
 
 export default function RescueTeams() {
   const firestoreTasks = useCollectionSnapshot('tasks');
+  const firestoreUsers = useCollectionSnapshot('users');
+  const firestoreShelters = useCollectionSnapshot('shelters');
+  const firestoreAlerts = useCollectionSnapshot('alerts');
+
+  const activeAlerts = useMemo(() => {
+    return firestoreAlerts.filter((alert) => (alert.riskPriority || '').toUpperCase() !== 'ROUTINE').slice(0, 3);
+  }, [firestoreAlerts]);
+
+  const liveVolunteers = useMemo(() => {
+    return firestoreUsers
+      .filter((user) => ['VOLUNTEER', 'NDRF', 'COLLECTOR'].includes((user.role || '').toUpperCase()))
+      .slice(0, 3)
+      .map((user) => ({
+        id: user.id,
+        name: user.name || user.fullName || user.email || user.id,
+        dist: user.zoneId || user.baseZone || 'Live registry',
+        skills: user.specialties?.length ? user.specialties : [user.role || 'Support'],
+      }));
+  }, [firestoreUsers]);
+
+  const shelterRows = useMemo(() => {
+    return firestoreShelters.slice(0, 2).map((shelter) => ({
+      id: shelter.id,
+      name: shelter.name || 'Shelter',
+      value: Number.isFinite(Number(shelter.capacity)) && Number(shelter.capacity) > 0
+        ? Math.min(100, Math.round((Number(shelter.occupied || shelter.currentOccupancy || 0) / Number(shelter.capacity)) * 100))
+        : 0,
+      total: `${Number(shelter.occupied || shelter.currentOccupancy || 0)} / ${Number(shelter.capacity || shelter.totalCapacity || 0)}`,
+      danger: Number(shelter.capacity || shelter.totalCapacity || 0) > 0 && Number(shelter.occupied || shelter.currentOccupancy || 0) >= Number(shelter.capacity || shelter.totalCapacity || 0) * 0.85,
+    }));
+  }, [firestoreShelters]);
+
   const tasks = useMemo(() => {
     return firestoreTasks.slice(0, 3).map(task => ({
       id: task.id,
@@ -49,10 +84,50 @@ export default function RescueTeams() {
       loc: formatLocation(task.location),
       team: task.assignedTeam || 'Unassigned',
       responders: task.responders?.length ? new Array(task.responders.length) : [],
-      unassigned: !task.assignedTeam
+      unassigned: !task.assignedTeam,
+      original: task,
     }));
   }, [firestoreTasks]);
   const activeTaskCount = firestoreTasks.length;
+
+  async function assignTask(task) {
+    try {
+      await updateDoc(doc(db, 'tasks', task.id), {
+        assignedTeam: task.team === 'Unassigned' ? 'Rescue Team Alpha' : task.team,
+        status: 'IN_PROGRESS',
+        assignedAt: serverTimestamp(),
+      });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'TASK_ASSIGN',
+        taskId: task.id,
+        actor: 'dashboard-ui',
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Task assignment failed', error);
+    }
+  }
+
+  async function dispatchResource(label) {
+    try {
+      await addDoc(collection(db, 'dispatches'), {
+        resource: label,
+        status: 'REQUESTED',
+        createdAt: serverTimestamp(),
+        source: 'dashboard-ui',
+      });
+    } catch (error) {
+      console.error('Resource dispatch failed', error);
+    }
+  }
+
+  const operationsSummary = {
+    activeAlerts: activeAlerts.length,
+    volunteers: liveVolunteers.length,
+    shelters: shelterRows.length,
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -79,6 +154,7 @@ export default function RescueTeams() {
                 responders={task.responders}
                 unassigned={task.unassigned}
                 active={idx === 0}
+                onAssign={() => assignTask(task)}
               />
             ))
           ) : (
@@ -109,9 +185,9 @@ export default function RescueTeams() {
             </div>
 
             <div className="bg-surface-container/90 backdrop-blur border border-outline-variant px-6 py-3 rounded-2xl pointer-events-auto flex items-center gap-6">
-              <StatusBadge color="bg-error" label="Hot Zone" />
-              <StatusBadge color="bg-primary" label="Teams" />
-              <StatusBadge color="bg-secondary" label="Vehicles" />
+              <StatusBadge color="bg-error" label={activeAlerts[0]?.sourceZoneName || activeAlerts[0]?.sourceZoneId || 'Hot Zone'} />
+              <StatusBadge color="bg-primary" label={`${operationsSummary.volunteers} Teams`} />
+              <StatusBadge color="bg-secondary" label={`${activeTaskCount} Tasks`} />
             </div>
           </div>
 
@@ -125,7 +201,7 @@ export default function RescueTeams() {
               <AlertTriangle size={20} />
             </div>
             <div className="mt-3 bg-background border border-error px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest whitespace-nowrap">
-              Collapse B-12
+              {activeAlerts[0]?.title || activeAlerts[0]?.riskType || 'Live Incident'}
             </div>
           </motion.div>
 
@@ -134,7 +210,7 @@ export default function RescueTeams() {
               <Ambulance size={20} />
             </div>
             <div className="mt-3 bg-background border border-primary px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest whitespace-nowrap">
-              Team Phoenix (MOVING)
+              {tasks[0]?.team !== 'Unassigned' ? `${tasks[0]?.team} (ACTIVE)` : 'Rescue Team Alpha'}
             </div>
           </div>
 
@@ -142,12 +218,12 @@ export default function RescueTeams() {
             <div className="bg-surface-container border border-outline px-4 py-3 rounded-xl shadow-2xl flex flex-col gap-2 min-w-[140px]">
               <div className="flex items-center gap-3">
                 <Home size={18} className="text-white" />
-                <span className="text-[10px] font-black text-white uppercase tracking-wider">Shelter A</span>
+                <span className="text-[10px] font-black text-white uppercase tracking-wider">{firestoreShelters[0]?.name || 'Shelter A'}</span>
               </div>
               <div className="w-full bg-background h-2 rounded-full overflow-hidden">
-                <div className="bg-error h-full" style={{ width: '80%' }} />
+                <div className="bg-error h-full" style={{ width: `${shelterRows[0]?.value || 0}%` }} />
               </div>
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">80% Capacity</span>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{shelterRows[0]?.total || '0 / 0'} Capacity</span>
             </div>
           </div>
         </div>
@@ -156,16 +232,21 @@ export default function RescueTeams() {
         <div className="absolute bottom-6 left-6 right-6 z-20 flex justify-between pointer-events-none">
           <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-6 rounded-2xl pointer-events-auto flex items-center gap-10">
             <div className="flex flex-col">
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Current Weather</span>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Current Load</span>
               <div className="flex items-center gap-3">
                 <CloudRain size={20} className="text-primary" />
-                <span className="text-sm font-bold text-white">12mm/hr Heavy Rain</span>
+                <span className="text-sm font-bold text-white">{operationsSummary.activeAlerts} alerts, {activeTaskCount} tasks</span>
               </div>
             </div>
             <div className="h-10 w-px bg-outline-variant" />
             <div className="flex flex-col">
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Ground Saturation</span>
-              <span className="text-sm font-bold text-tertiary">92% CRITICAL</span>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Volunteer Pool</span>
+              <span className="text-sm font-bold text-tertiary">{operationsSummary.volunteers} available</span>
+            </div>
+            <div className="h-10 w-px bg-outline-variant" />
+            <div className="flex flex-col">
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Shelter Coverage</span>
+              <span className="text-sm font-bold text-white">{operationsSummary.shelters} live shelters</span>
             </div>
           </div>
 
@@ -184,8 +265,13 @@ export default function RescueTeams() {
             <button className="text-[10px] font-black text-primary uppercase tracking-[0.2em] hover:underline">View All</button>
           </div>
           <div className="space-y-3">
-            <VolunteerItem name="Elena Rossi" dist="2.1km" skills={['Trauma Med', 'IT, EN']} />
-            <VolunteerItem name="Marcus Chen" dist="0.8km" skills={['Excavation', 'Rescue Swim']} />
+            {liveVolunteers.length > 0 ? (
+              liveVolunteers.map((volunteer) => (
+                <VolunteerItem key={volunteer.id} name={volunteer.name} dist={volunteer.dist} skills={volunteer.skills} />
+              ))
+            ) : (
+              <div className="text-sm text-slate-500">No live volunteers found</div>
+            )}
           </div>
         </div>
 
@@ -193,18 +279,23 @@ export default function RescueTeams() {
           <div className="space-y-6">
             <h2 className="text-xl font-bold text-white tracking-tight">Shelter Capacity</h2>
             <div className="space-y-4">
-              <ShelterCard name="Central High School" value={88} total="352 / 400" danger />
-              <ShelterCard name="North Community Hub" value={42} total="126 / 300" />
+              {shelterRows.length > 0 ? (
+                shelterRows.map((shelter) => (
+                  <ShelterCard key={shelter.id} name={shelter.name} value={shelter.value} total={shelter.total} danger={shelter.danger} />
+                ))
+              ) : (
+                <div className="text-sm text-slate-500">No shelter data available</div>
+              )}
             </div>
           </div>
 
           <div className="space-y-6">
             <h2 className="text-xl font-bold text-white tracking-tight">Dispatch Resources</h2>
             <div className="grid grid-cols-2 gap-3">
-              <DispatchButton icon={<Activity size={20} />} label="Medical Kit" />
-              <DispatchButton icon={<Package size={20} />} label="Ration Packs" />
-              <DispatchButton icon={<Waves size={20} />} label="Water Tanker" />
-              <DispatchButton icon={<Zap size={20} />} label="Power Gen" />
+              <DispatchButton icon={<Activity size={20} />} label="Medical Kit" onClick={() => dispatchResource('Medical Kit')} />
+              <DispatchButton icon={<Package size={20} />} label="Ration Packs" onClick={() => dispatchResource('Ration Packs')} />
+              <DispatchButton icon={<Waves size={20} />} label="Water Tanker" onClick={() => dispatchResource('Water Tanker')} />
+              <DispatchButton icon={<Zap size={20} />} label="Power Gen" onClick={() => dispatchResource('Power Gen')} />
             </div>
           </div>
         </div>
@@ -213,7 +304,7 @@ export default function RescueTeams() {
   );
 }
 
-function TaskCard({ priority, eta, title, loc, team, responders, active, unassigned }) {
+function TaskCard({ priority, eta, title, loc, team, responders, active, unassigned, onAssign }) {
   return (
     <div className={`p-4 bg-surface-container border rounded-xl cursor-pointer transition-all ${
       active ? 'border-error ring-1 ring-error/20 bg-surface-container-high shadow-lg' : 'border-outline-variant hover:border-primary/50'
@@ -237,7 +328,7 @@ function TaskCard({ priority, eta, title, loc, team, responders, active, unassig
         {unassigned ? (
           <>
             <span className="text-[10px] font-medium text-slate-500 italic">Unassigned</span>
-            <button className="text-[10px] font-black text-primary px-3 py-1 bg-primary/10 rounded-lg uppercase tracking-widest border border-primary/20">Assign</button>
+            <button onClick={onAssign} className="text-[10px] font-black text-primary px-3 py-1 bg-primary/10 rounded-lg uppercase tracking-widest border border-primary/20">Assign</button>
           </>
         ) : (
           <>
@@ -316,9 +407,9 @@ function ShelterCard({ name, value, total, danger }) {
   );
 }
 
-function DispatchButton({ icon, label }) {
+function DispatchButton({ icon, label, onClick }) {
   return (
-    <button className="flex flex-col items-center gap-3 p-5 bg-surface-container-high border border-outline-variant rounded-2xl hover:border-primary transition-all active:scale-[0.98] group">
+    <button onClick={onClick} className="flex flex-col items-center gap-3 p-5 bg-surface-container-high border border-outline-variant rounded-2xl hover:border-primary transition-all active:scale-[0.98] group">
       <div className="text-primary group-hover:scale-110 transition-transform">{icon}</div>
       <span className="text-[10px] font-black text-white uppercase tracking-widest">{label}</span>
     </button>

@@ -21,15 +21,163 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+
+import { db } from '../firebase';
 import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
+
+function formatTime(timestamp) {
+  if (!timestamp?.toDate) return 'moments ago';
+  const date = timestamp.toDate();
+  const now = new Date();
+  const diff = now - date;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'moments ago';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ago`;
+}
 
 export default function Volunteers() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   const allUsers = useCollectionSnapshot('users');
+  const allVolunteerDocs = useCollectionSnapshot('volunteers');
+  const allTasks = useCollectionSnapshot('tasks');
+  const allShelters = useCollectionSnapshot('shelters');
+
+  const allVolunteerRecords = useMemo(() => {
+    const combined = [
+      ...allUsers.map((user) => ({ ...user, sourceCollection: user.sourceCollection || 'users' })),
+      ...allVolunteerDocs.map((volunteer) => ({ ...volunteer, sourceCollection: 'volunteers' })),
+    ];
+
+    const seenIds = new Set();
+    return combined.filter((entry) => {
+      if (seenIds.has(entry.id)) return false;
+      seenIds.add(entry.id);
+      return true;
+    });
+  }, [allUsers, allVolunteerDocs]);
+
   const volunteers = useMemo(() => {
-    return allUsers.filter(u => ['COLLECTOR', 'NDRF', 'VOLUNTEER'].includes(u.role)).slice(0, 3);
-  }, [allUsers]);
-  const volunteerCount = allUsers.filter(u => ['COLLECTOR', 'NDRF', 'VOLUNTEER'].includes(u.role)).length;
+    const liveVolunteers = allVolunteerRecords
+      .filter((u) => ['COLLECTOR', 'NDRF', 'VOLUNTEER'].includes((u.role || '').toUpperCase()))
+      .map((u) => ({
+        ...u,
+        displayName: u.name || u.fullName || u.email || u.id,
+        locationLabel: u.zoneId || u.baseZone || u.location?.name || 'Unassigned',
+        verificationStatus: u.active === false ? 'Pending' : 'Verified',
+        availability: u.active === false ? 'Busy' : 'Available',
+        syncLabel: formatTime(u.lastActivatedAt || u.updatedAt || u.createdAt),
+        skills: u.specialties?.length ? u.specialties : [u.role || 'Support'],
+      }));
+
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return liveVolunteers;
+
+    return liveVolunteers.filter((volunteer) => {
+      return [volunteer.displayName, volunteer.email, volunteer.id, volunteer.locationLabel]
+        .filter(Boolean)
+        .some((value) => value.toLowerCase().includes(query));
+    });
+  }, [allVolunteerRecords, searchQuery]);
+
+  const volunteerCount = useMemo(() => {
+    return allVolunteerRecords.filter((u) => ['COLLECTOR', 'NDRF', 'VOLUNTEER'].includes((u.role || '').toUpperCase())).length;
+  }, [allVolunteerRecords]);
+
+  const recentActivity = useMemo(() => {
+    return allVolunteerRecords.slice(0, 3).map((user) => ({
+      id: user.id,
+      name: user.name || user.fullName || user.email || user.id,
+      text: user.active ? 'Checked in to live roster' : 'Awaiting assignment',
+      time: formatTime(user.lastActivatedAt || user.updatedAt || user.createdAt),
+      color: user.active ? 'bg-emerald-500' : 'bg-slate-600',
+    }));
+  }, [allVolunteerRecords]);
+
+  const nearestVolunteers = useMemo(() => {
+    return volunteers.slice(0, 3).map((volunteer, index) => ({
+      id: volunteer.id,
+      name: volunteer.displayName,
+      info: `${volunteer.locationLabel} • ${volunteer.availability}`,
+      abbr: (volunteer.displayName || 'V').split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase() || 'V',
+      color: index === 0 ? 'bg-primary' : index === 1 ? 'bg-secondary' : 'bg-slate-500',
+    }));
+  }, [volunteers]);
+
+  const shelterSupport = useMemo(() => {
+    return allShelters.slice(0, 2).map((shelter) => ({
+      id: shelter.id,
+      zone: shelter.name || 'Shelter',
+      needed: Number(shelter.capacity || shelter.totalCapacity || 0),
+      current: Number(shelter.occupied || shelter.currentOccupancy || 0),
+      progress: Number.isFinite(Number(shelter.capacity || shelter.totalCapacity || 0)) && Number(shelter.capacity || shelter.totalCapacity || 0) > 0
+        ? Math.min(100, Math.round((Number(shelter.occupied || shelter.currentOccupancy || 0) / Number(shelter.capacity || shelter.totalCapacity || 0)) * 100))
+        : 0,
+      urgent: Number(shelter.capacity || shelter.totalCapacity || 0) > 0 && Number(shelter.occupied || shelter.currentOccupancy || 0) >= Number(shelter.capacity || shelter.totalCapacity || 0) * 0.85,
+    }));
+  }, [allShelters]);
+
+  const taskLoadCount = allTasks.length;
+
+  async function handleAssignVolunteer(volunteer) {
+    try {
+      await updateDoc(doc(db, 'users', volunteer.id), {
+        active: true,
+        lastActivatedAt: serverTimestamp(),
+      });
+
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'VOLUNTEER_ASSIGN',
+        volunteerId: volunteer.id,
+        actor: 'dashboard-ui',
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('Volunteer assignment failed', error);
+    }
+  }
+
+  async function handleVolunteerCreate(event) {
+    event.preventDefault();
+    setIsSaving(true);
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      const specialties = formData.getAll('skills');
+      const volunteerPayload = {
+        name: formData.get('fullName'),
+        fullName: formData.get('fullName'),
+        email: formData.get('email'),
+        phone: formData.get('phone'),
+        role: String(formData.get('role') || 'VOLUNTEER').toUpperCase(),
+        zoneId: formData.get('zoneId'),
+        specialties,
+        active: true,
+        source: 'dashboard-ui',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await addDoc(collection(db, 'volunteers'), volunteerPayload);
+
+      try {
+        await addDoc(collection(db, 'users'), volunteerPayload);
+      } catch (userWriteError) {
+        console.warn('User profile sync failed, volunteer record was still created', userWriteError);
+      }
+
+      event.currentTarget.reset();
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Volunteer registration failed', error);
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <motion.div 
@@ -102,6 +250,8 @@ export default function Volunteers() {
                   className="w-full pl-12 pr-4 py-3 bg-[#0B1220] border border-outline-variant rounded-xl text-sm text-on-surface focus:outline-none focus:border-primary transition-all placeholder-slate-600"
                   placeholder="Find volunteer by name or ID..."
                   type="text"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
                 />
               </div>
               <button 
@@ -130,12 +280,13 @@ export default function Volunteers() {
                     volunteers.map((vol) => (
                       <VolunteerRow 
                         key={vol.id}
-                        name={vol.email?.split('@')[0] || 'Volunteer'}
-                        loc={vol.zoneId || 'Unassigned'}
-                        status="Verified"
-                        skills={[vol.role || 'Support']}
-                        avail="Available"
-                        sync="Live"
+                          name={vol.displayName}
+                          loc={vol.locationLabel}
+                          status={vol.verificationStatus}
+                          skills={vol.skills}
+                          avail={vol.availability}
+                          sync={vol.syncLabel}
+                          onAssign={() => handleAssignVolunteer(vol)}
                       />
                     ))
                   ) : (
@@ -164,20 +315,36 @@ export default function Volunteers() {
             <div className="bg-surface-container border border-outline-variant p-6 rounded-2xl">
               <h3 className="text-sm font-bold text-white uppercase tracking-wider mb-6">Nearest Volunteers</h3>
               <div className="space-y-4">
-                <NearestItem name="Marcus Thorne" info="0.4 miles away • Harbor Dist." abbr="MT" color="bg-primary" />
-                <NearestItem name="Kenji Sato" info="1.2 miles away • Warehouse Dist." abbr="KS" color="bg-secondary" />
-                <NearestItem name="Jane Doe" info="1.8 miles away • Downtown" abbr="JD" color="bg-slate-500" />
+                {nearestVolunteers.length > 0 ? (
+                  nearestVolunteers.map((volunteer) => (
+                    <NearestItem key={volunteer.id} name={volunteer.name} info={volunteer.info} abbr={volunteer.abbr} color={volunteer.color} />
+                  ))
+                ) : (
+                  <div className="text-xs text-slate-500">No volunteers available</div>
+                )}
               </div>
             </div>
 
             <div className="bg-surface-container border border-outline-variant p-6 rounded-2xl">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">Critical Zone Support</h3>
-                <span className="px-2 py-0.5 bg-error/10 text-error text-[9px] font-black rounded uppercase">Active Alerts</span>
+                <span className="px-2 py-0.5 bg-error/10 text-error text-[9px] font-black rounded uppercase">{taskLoadCount} Tasks</span>
               </div>
               <div className="space-y-5">
-                <ZoneSupportItem zone="Harbor District" needed={8} current={4} progress={35} urgent />
-                <ZoneSupportItem zone="Warehouse Dist." needed={2} current={12} progress={80} />
+                {shelterSupport.length > 0 ? (
+                  shelterSupport.map((support) => (
+                    <ZoneSupportItem
+                      key={support.id}
+                      zone={support.zone}
+                      needed={support.needed}
+                      current={support.current}
+                      progress={support.progress}
+                      urgent={support.urgent}
+                    />
+                  ))
+                ) : (
+                  <div className="text-xs text-slate-500">No shelter data available</div>
+                )}
               </div>
             </div>
           </div>
@@ -186,34 +353,34 @@ export default function Volunteers() {
 
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-center justify-center p-3 md:p-6">
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-xl bg-surface-container border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-md max-h-[88vh] bg-surface-container border border-outline-variant rounded-2xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="px-8 py-6 border-b border-outline-variant flex justify-between items-center bg-[#0B1220]">
+              <div className="px-4 md:px-5 py-3 border-b border-outline-variant flex justify-between items-center bg-[#0B1220] shrink-0">
                 <div>
-                  <h2 className="text-xl font-bold text-primary leading-tight">New Personnel Intake</h2>
-                  <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.3em] mt-1">Command Sentinel System // Registration Portal</p>
+                  <h2 className="text-base font-bold text-primary leading-tight">New Personnel Intake</h2>
+                  <p className="text-[7px] font-black text-slate-500 uppercase tracking-[0.24em] mt-1">Command Sentinel System // Registration Portal</p>
                 </div>
-                <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white transition-colors p-2">
-                  <X size={20} />
+                <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white transition-colors p-1.5">
+                  <X size={18} />
                 </button>
               </div>
 
-              <form className="p-8 space-y-8" onSubmit={(e) => { e.preventDefault(); setIsModalOpen(false); }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <InputGroup label="Full Name" placeholder="Johnathan Doe" icon={<User size={14} />} />
-                  <InputGroup label="Email Address" placeholder="j.doe@sentinel.hq" icon={<Mail size={14} />} />
+              <form className="p-4 md:p-5 space-y-4 overflow-y-auto" onSubmit={handleVolunteerCreate}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InputGroup label="Full Name" placeholder="Johnathan Doe" icon={<User size={14} />} name="fullName" />
+                  <InputGroup label="Email Address" placeholder="j.doe@sentinel.hq" icon={<Mail size={14} />} name="email" />
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <InputGroup label="Phone Contact" placeholder="+1 (555) 000-0000" icon={<Smartphone size={14} />} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InputGroup label="Phone Contact" placeholder="+1 (555) 000-0000" icon={<Smartphone size={14} />} name="phone" />
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Assigned Sector</label>
-                    <select className="w-full bg-[#0B1220] border border-outline-variant rounded-xl px-4 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">Assigned Sector</label>
+                    <select name="zoneId" className="w-full bg-[#0B1220] border border-outline-variant rounded-xl px-4 py-2 text-sm text-on-surface focus:outline-none focus:border-primary transition-all appearance-none cursor-pointer">
                       <option>Select Ops Sector</option>
                       <option>Sector Alpha (North)</option>
                       <option>Sector Beta (Urban)</option>
@@ -221,9 +388,9 @@ export default function Volunteers() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Specialized Operational Skills</label>
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2.5">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">Specialized Operational Skills</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <SkillCheckbox label="Medical" />
                     <SkillCheckbox label="Driver" />
                     <SkillCheckbox label="Search & Rescue" />
@@ -231,23 +398,23 @@ export default function Volunteers() {
                   </div>
                 </div>
 
-                <div className="pt-8 border-t border-outline-variant flex gap-4">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-6 py-3 bg-transparent border border-outline-variant text-slate-400 hover:text-white rounded-xl transition-all font-bold text-xs uppercase tracking-widest">
+                <div className="pt-4 border-t border-outline-variant flex flex-col sm:flex-row gap-2.5">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 px-5 py-2.5 bg-transparent border border-outline-variant text-slate-400 hover:text-white rounded-xl transition-all font-bold text-[11px] uppercase tracking-widest">
                     Cancel
                   </button>
-                  <button type="submit" className="flex-[2] px-6 py-3 bg-primary-container text-on-primary-container hover:brightness-110 active:opacity-80 rounded-xl transition-all font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary-container/20">
-                    <ShieldCheck size={18} />
-                    Register Volunteer
+                  <button type="submit" disabled={isSaving} className="flex-[2] px-5 py-2.5 bg-primary-container text-on-primary-container hover:brightness-110 active:opacity-80 rounded-xl transition-all font-black text-[11px] uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-primary-container/20 disabled:opacity-70">
+                    <ShieldCheck size={16} />
+                    {isSaving ? 'Registering...' : 'Register Volunteer'}
                   </button>
                 </div>
               </form>
 
-              <div className="bg-[#0B1220] px-8 py-3 flex justify-between items-center">
+              <div className="bg-[#0B1220] px-4 md:px-5 py-2.5 flex justify-between items-center shrink-0">
                 <div className="flex gap-4 items-center">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[9px] text-slate-600 font-mono tracking-tight uppercase">Encryption: AES-256 Active</span>
+                  <span className="text-[7px] text-slate-600 font-mono tracking-tight uppercase">Encryption: AES-256 Active</span>
                 </div>
-                <span className="text-[9px] text-slate-700 font-mono uppercase">Sys_Load: 12%</span>
+                <span className="text-[7px] text-slate-700 font-mono uppercase">Sys_Load: 12%</span>
               </div>
             </motion.div>
           </div>
@@ -293,7 +460,7 @@ function ActivityLogItem({ name, text, time, color }) {
   );
 }
 
-function VolunteerRow({ name, loc, status, skills, avail, sync }) {
+function VolunteerRow({ name, loc, status, skills, avail, sync, onAssign }) {
   return (
     <tr className="hover:bg-surface-container-high/30 transition-colors group">
       <td className="px-6 py-5">
@@ -332,7 +499,7 @@ function VolunteerRow({ name, loc, status, skills, avail, sync }) {
       </td>
       <td className="px-6 py-5 text-[11px] font-mono text-slate-400 uppercase">{sync}</td>
       <td className="px-6 py-5 text-right">
-        <button className="px-4 py-2 bg-surface-container-highest hover:bg-primary-container hover:text-on-primary-container rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Assign</button>
+        <button onClick={onAssign} className="px-4 py-2 bg-surface-container-highest hover:bg-primary-container hover:text-on-primary-container rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">Assign</button>
       </td>
     </tr>
   );
@@ -372,14 +539,15 @@ function ZoneSupportItem({ zone, needed, current, progress, urgent }) {
   );
 }
 
-function InputGroup({ label, placeholder, icon }) {
+function InputGroup({ label, placeholder, icon, name }) {
   return (
-    <div className="space-y-2">
-      <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">{label}</label>
+    <div className="space-y-1.5">
+      <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest block">{label}</label>
       <div className="relative">
         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-primary">{icon}</div>
         <input 
-          className="w-full bg-[#0B1220] border border-outline-variant rounded-xl pl-10 pr-4 py-2.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-all placeholder-slate-700"
+          name={name}
+          className="w-full bg-[#0B1220] border border-outline-variant rounded-xl pl-10 pr-4 py-1.5 text-sm text-on-surface focus:outline-none focus:border-primary transition-all placeholder-slate-700"
           placeholder={placeholder}
           type="text"
         />
@@ -390,9 +558,9 @@ function InputGroup({ label, placeholder, icon }) {
 
 function SkillCheckbox({ label }) {
   return (
-    <label className="group flex items-center gap-4 p-4 bg-[#0B1220] border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-container-high transition-colors">
-      <input type="checkbox" className="w-4 h-4 rounded border-outline-variant bg-background text-primary focus:ring-primary focus:ring-offset-0" />
-      <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">{label}</span>
+    <label className="group flex items-center gap-3 p-2.5 bg-[#0B1220] border border-outline-variant rounded-xl cursor-pointer hover:bg-surface-container-high transition-colors">
+      <input name="skills" value={label} type="checkbox" className="w-4 h-4 rounded border-outline-variant bg-background text-primary focus:ring-primary focus:ring-offset-0" />
+      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">{label}</span>
     </label>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { 
   AlertCircle, 
   Send, 
@@ -8,6 +8,8 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { db } from '../firebase';
+import { addDoc, collection, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
 
 function formatTime(timestamp) {
@@ -23,6 +25,11 @@ function formatTime(timestamp) {
 }
 
 export default function DashboardScreen() {
+  const [actionLoading, setActionLoading] = useState({ resend: false, escalate: false, cancel: false });
+  const primaryAlertRef = useRef(null);
+
+  const setLoading = useCallback((key, v) => setActionLoading(s => ({ ...s, [key]: v })), []);
+
   const alerts = useCollectionSnapshot('alerts');
   const responses = useCollectionSnapshot('responses');
   const deliveryLogs = useCollectionSnapshot('deliveryLogs');
@@ -34,6 +41,7 @@ export default function DashboardScreen() {
   }, [alerts]);
 
   const primaryAlert = criticalAlerts[0] || alerts[0] || null;
+  primaryAlertRef.current = primaryAlert;
   const alertScore = Number(primaryAlert?.riskIntelligenceScore ?? primaryAlert?.riskScore ?? 82);
   const alertTone = alertScore >= 80 ? 'text-error' : alertScore >= 60 ? 'text-tertiary' : 'text-emerald-400';
   const alertToneLabel = alertScore >= 80 ? 'HIGH' : alertScore >= 60 ? 'ELEVATED' : 'MONITORING';
@@ -67,6 +75,89 @@ export default function DashboardScreen() {
     ];
   }, [deliveryLogs]);
 
+  const latestResponse = responses[0] || null;
+  const sentDeliveries = deliveryLogs.filter((log) => log.status === 'SENT').length;
+  const failedDeliveries = deliveryLogs.filter((log) => log.status === 'FAILED').length;
+
+  const handleResend = useCallback(async () => {
+    const currentAlert = primaryAlertRef.current;
+    if (!currentAlert?.id) return;
+    setLoading('resend', true);
+    try {
+      await addDoc(collection(db, 'deliveryLogs'), {
+        alertId: currentAlert.id,
+        channel: 'MANUAL_RESEND',
+        status: 'RETRY',
+        createdAt: serverTimestamp(),
+        createdBy: 'dashboard-ui',
+      });
+      // Audit entry
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'RESEND',
+        alertId: currentAlert.id,
+        actor: 'dashboard-ui',
+        outcome: 'REQUESTED',
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Resend failed', err);
+    } finally {
+      setLoading('resend', false);
+    }
+  }, [/* primaryAlert intentionally omitted to use latest value */ setLoading]);
+
+  const handleEscalate = useCallback(async () => {
+    const currentAlert = primaryAlertRef.current;
+    if (!currentAlert?.id) return;
+    setLoading('escalate', true);
+    try {
+      const alertRef = doc(db, 'alerts', currentAlert.id);
+      await updateDoc(alertRef, {
+        riskPriority: 'CRITICAL',
+        escalatedAt: serverTimestamp(),
+        escalatedBy: 'dashboard-ui',
+      });
+      // Audit entry
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'ESCALATE',
+        alertId: currentAlert.id,
+        actor: 'dashboard-ui',
+        outcome: 'UPDATED_ALERT',
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Escalate failed', err);
+    } finally {
+      setLoading('escalate', false);
+    }
+  }, [setLoading]);
+
+  const handleCancel = useCallback(async () => {
+    const currentAlert = primaryAlertRef.current;
+    if (!currentAlert?.id) return;
+    setLoading('cancel', true);
+    try {
+      const alertRef = doc(db, 'alerts', currentAlert.id);
+      await updateDoc(alertRef, {
+        status: 'CANCELLED',
+        cancelledAt: serverTimestamp(),
+        cancelledBy: 'dashboard-ui',
+      });
+      // Audit entry
+      await addDoc(collection(db, 'auditLogs'), {
+        action: 'CANCEL',
+        alertId: currentAlert.id,
+        actor: 'dashboard-ui',
+        outcome: 'UPDATED_ALERT',
+        createdAt: serverTimestamp(),
+      });
+    } catch (err) {
+      console.error('Cancel failed', err);
+    } finally {
+      setLoading('cancel', false);
+    }
+  }, [setLoading]);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -74,28 +165,62 @@ export default function DashboardScreen() {
       className="p-6 h-full flex flex-col gap-6 overflow-y-auto overflow-x-hidden"
     >
       <div className="grid grid-cols-12 gap-6 h-full min-w-0">
-        {/* Left Panel: Alert Feed */}
+        {/* Left Panel: Impact Zone */}
         <div className="col-span-12 lg:col-span-3 flex flex-col gap-4 min-w-0">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xl font-bold text-white tracking-tight">Active Alerts</h2>
-            <span className="px-2 py-1 bg-error/10 border border-error/30 text-error text-[10px] font-black rounded-full uppercase tracking-tighter">{criticalAlerts.length} Active</span>
+            <h2 className="text-xl font-bold text-white tracking-tight">
+              Impact Zone: {primaryAlert?.sourceZoneName || primaryAlert?.sourceZoneId || 'Live Operations'}
+            </h2>
+            <span className="px-2 py-1 bg-primary/10 border border-primary/30 text-primary text-[10px] font-black rounded-full uppercase tracking-tighter">
+              Live Zone
+            </span>
           </div>
           
           <div className="flex-1 space-y-3">
-            {criticalAlerts.length > 0 ? (
-              criticalAlerts.map((alert, idx) => (
-                <AlertCard 
-                  key={alert.id}
-                  priority={alert.riskPriority || 'HIGH'}
-                  time={formatTime(alert.createdAt)}
-                  title={alert.title || 'Alert'}
-                  desc={alert.message || ''}
-                  active={idx === 0}
-                />
-              ))
-            ) : (
-              <div className="text-slate-400 text-sm p-4 text-center">No active alerts</div>
-            )}
+            <div className="rounded-2xl border border-outline-variant bg-background/50 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-3 h-3 rounded-full bg-error animate-pulse shadow-[0_0_10px_rgba(255,180,171,0.55)]" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Primary Zone</p>
+                  <p className="text-sm font-semibold text-white truncate">
+                    {primaryAlert?.sourceZoneName || primaryAlert?.sourceZoneId || 'Live Operations'}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-xl border border-outline-variant bg-surface-container/60 p-3">
+                  <p className="text-slate-500 uppercase tracking-widest font-black text-[9px]">Alerts</p>
+                  <p className="mt-2 text-2xl font-black text-white">{criticalAlerts.length}</p>
+                </div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container/60 p-3">
+                  <p className="text-slate-500 uppercase tracking-widest font-black text-[9px]">Status</p>
+                  <p className={`mt-2 text-2xl font-black ${alertTone}`}>{alertToneLabel}</p>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                {primaryAlert?.title || primaryAlert?.message || 'No active impact details available.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-outline-variant bg-background/40 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Zone Focus</p>
+                <span className="text-[10px] font-black uppercase tracking-wider text-primary">{sentDeliveries} Delivered</span>
+              </div>
+              <div className="space-y-2 text-sm text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>Responses</span>
+                  <span className="font-semibold text-white">{responses.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Deliveries</span>
+                  <span className="font-semibold text-white">{deliveryLogs.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Failed</span>
+                  <span className="font-semibold text-error">{failedDeliveries}</span>
+                </div>
+              </div>
+            </div>
             
             <button className="w-full py-4 text-[10px] font-black text-primary uppercase tracking-[0.2em] border border-primary/20 rounded-xl hover:bg-primary/5 transition-all">
               View All ({alerts.length})
@@ -105,28 +230,68 @@ export default function DashboardScreen() {
 
         {/* Center Map Panel */}
         <div className="col-span-12 lg:col-span-6 bg-surface-container border border-outline-variant rounded-2xl overflow-hidden relative min-h-[400px] min-w-0">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.25),_transparent_38%),radial-gradient(circle_at_bottom_right,_rgba(255,180,171,0.18),_transparent_32%),linear-gradient(180deg,_rgba(11,18,32,0.96),_rgba(11,18,32,0.82))]" />
+
           <div className="absolute top-4 left-4 z-10 space-y-2">
             <div className="bg-background/80 backdrop-blur-md px-4 py-2 rounded-xl border border-outline-variant flex items-center gap-3">
-              <div className="w-3 h-3 bg-error rounded-full animate-pulse shadow-[0_0_10px_rgba(255,180,171,0.5)]" />
-              <span className="text-[10px] font-bold text-white uppercase tracking-wider">Impact Zone: North Coastal</span>
+              <div className="w-3 h-3 bg-primary rounded-full animate-pulse shadow-[0_0_10px_rgba(97,169,255,0.45)]" />
+              <span className="text-[10px] font-bold text-white uppercase tracking-wider">
+                Active Alerts: {criticalAlerts.length}
+              </span>
             </div>
           </div>
 
-          {/* Map Placeholder */}
-          <div className="absolute inset-0 grayscale brightness-50 opacity-40">
-            <img 
-              src="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80&w=2000" 
-              className="w-full h-full object-cover" 
-              alt="Tactical satellite map"
-            />
+          <div className="absolute top-4 right-4 z-10 bg-background/80 backdrop-blur-md px-4 py-2 rounded-xl border border-outline-variant text-[10px] font-bold text-slate-300 uppercase tracking-wider">
+            Live data board
           </div>
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent opacity-60" />
 
-          {/* Map Markers Overlay */}
-          <div className="absolute top-[40%] left-[45%] flex flex-col items-center">
-            <div className="w-12 h-12 rounded-full border-2 border-error animate-ping absolute" />
-            <div className="w-8 h-8 bg-error rounded-full flex items-center justify-center relative z-10 shadow-lg shadow-error/40">
-              <AlertCircle size={14} className="text-on-error" />
+          <div className="absolute inset-0 p-6 pt-20 flex flex-col justify-between gap-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-2xl border border-outline-variant bg-background/50 p-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Open Alerts</p>
+                <p className="mt-3 text-3xl font-black text-white">{criticalAlerts.length}</p>
+                <p className="mt-1 text-xs text-slate-400">Active escalations in Firestore</p>
+              </div>
+              <div className="rounded-2xl border border-outline-variant bg-background/50 p-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Live Responses</p>
+                <p className="mt-3 text-3xl font-black text-white">{responses.length}</p>
+                <p className="mt-1 text-xs text-slate-400">Citizen acknowledgements tracked</p>
+              </div>
+              <div className="rounded-2xl border border-outline-variant bg-background/50 p-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Sent Deliveries</p>
+                <p className="mt-3 text-3xl font-black text-emerald-400">{sentDeliveries}</p>
+                <p className="mt-1 text-xs text-slate-400">Push, SMS, and voice confirmations</p>
+              </div>
+              <div className="rounded-2xl border border-outline-variant bg-background/50 p-4">
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Failed Deliveries</p>
+                <p className="mt-3 text-3xl font-black text-error">{failedDeliveries}</p>
+                <p className="mt-1 text-xs text-slate-400">Retries will appear in audit logs</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-outline-variant bg-background/70 backdrop-blur-md p-5 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Latest Response</p>
+                  <p className="mt-1 text-base font-semibold text-white truncate">{latestResponse?.userId || latestResponse?.id || 'No response yet'}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Status</p>
+                  <p className="mt-1 text-sm font-semibold text-primary">{latestResponse?.status || 'Waiting'}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="rounded-xl border border-outline-variant bg-surface-container/60 p-3">
+                  <p className="text-slate-500 uppercase tracking-widest font-black text-[9px]">Zone</p>
+                  <p className="mt-2 text-white font-semibold truncate">{latestResponse?.sourceZoneName || latestResponse?.sourceZoneId || 'N/A'}</p>
+                </div>
+                <div className="rounded-xl border border-outline-variant bg-surface-container/60 p-3">
+                  <p className="text-slate-500 uppercase tracking-widest font-black text-[9px]">Coordinates</p>
+                  <p className="mt-2 text-white font-semibold truncate">
+                    {latestResponse?.location?.latitude ?? latestResponse?.location?._lat ?? '—'}, {latestResponse?.location?.longitude ?? latestResponse?.location?._long ?? '—'}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -184,19 +349,19 @@ export default function DashboardScreen() {
               Actions
             </h3>
 
-            <button className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+            <button onClick={handleResend} disabled={actionLoading.resend} aria-busy={actionLoading.resend} className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
               <Send size={16} />
-              Resend Alert
+              {actionLoading.resend ? 'Resending…' : 'Resend Alert'}
             </button>
 
-            <button className="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded-xl text-[#0B1220] font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+            <button onClick={handleEscalate} disabled={actionLoading.escalate} aria-busy={actionLoading.escalate} className="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded-xl text-[#0B1220] font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
               <TrendingUp size={16} />
-              Escalate
+              {actionLoading.escalate ? 'Escalating…' : 'Escalate'}
             </button>
 
-            <button className="w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors">
+            <button onClick={handleCancel} disabled={actionLoading.cancel} aria-busy={actionLoading.cancel} className="w-full bg-red-600 hover:bg-red-700 py-3 rounded-xl text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
               <XCircle size={16} />
-              Cancel Alert
+              {actionLoading.cancel ? 'Cancelling…' : 'Cancel Alert'}
             </button>
 
             <div className="pt-2 border-t border-outline-variant/50 text-[10px] text-slate-400">

@@ -34,6 +34,11 @@ service cloud.firestore {
       allow read, write: if true; 
     }
 
+    // AUDIT LOGS: UI action audit trail
+    match /auditLogs/{logId} {
+      allow read, write: if true;
+    }
+
     // TASKS: Rescue tracking board
     match /tasks/{taskId} {
       allow read, write: if true; 
@@ -41,7 +46,19 @@ service cloud.firestore {
 
     // USERS: Users can read and write their own profile data
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if false;
+    }
+
+    // VOLUNTEERS: Dashboard needs to read all volunteers
+    match /volunteers/{volunteerId} {
+      allow read, write: if true;
+    }
+
+    // ZONES: Dashboard needs to read all zones for map
+    match /zones/{zoneId} {
+      allow read, write: if true;
     }
     
     // Deny everything else by default
