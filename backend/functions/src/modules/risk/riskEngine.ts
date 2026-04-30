@@ -31,6 +31,7 @@ export interface IntelligentRiskAssessment extends RiskAssessment {
 	priority: RiskPriority;
 	intelligenceScore: number;
 	intelligenceReason: string;
+	hazardProbabilities?: Record<string, number>;
 }
 
 const KNOWN_RISK_LEVELS: AlertRiskLevel[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
@@ -229,11 +230,69 @@ export function evaluateIntelligentRisk(input: RiskAssessmentInput): Intelligent
 		assessment.score + Math.min(toNumber(input.sourcesCount) ?? 1, 4) * 2 + (toNumber(input.confidence) ?? 0) * 10,
 	);
 
+	// Derive simple per-hazard probabilities using lightweight heuristics.
+	// This is intentionally rule-based and interpretable; replace with ML model later.
+	const hazardProbabilities: Record<string, number> = predictHazardProbs(input);
+
 	return {
 		...assessment,
 		priority,
 		intelligenceScore,
 		intelligenceReason: buildIntelligenceReason(input, intelligenceScore, priority),
+		hazardProbabilities,
 	};
+}
+
+/**
+ * Predict per-hazard probabilities from aggregated inputs using simple heuristics.
+ * Returns values in [0,1] for a small set of hazards.
+ */
+export function predictHazardProbs(input: RiskAssessmentInput): Record<string, number> {
+	const probs: Record<string, number> = {
+		flood: 0,
+		cyclone: 0,
+		earthquake: 0,
+		landslide: 0,
+		fire: 0,
+	};
+
+	const rainfall = toNumber(input.rainfallMm) ?? 0;
+	const wind = toNumber(input.windSpeedKph) ?? 0;
+	const quake = toNumber(input.earthquakeMagnitude) ?? 0;
+	const confidence = Math.max(0, Math.min(1, toNumber(input.confidence) ?? 0.7));
+	const sources = Math.min(4, Math.max(1, toNumber(input.sourcesCount) ?? 1));
+	const type = readString(input.alertType ?? input.type)?.toUpperCase() ?? '';
+
+	// Flood heuristic: rainfall, explicit floodRisk flag, evacuationRequired
+	let floodScore = 0;
+	floodScore += Math.min(rainfall / 120, 1) * 0.7;
+	if (toBoolean(input.floodRisk)) floodScore += 0.25;
+	if (toBoolean(input.evacuationRequired)) floodScore += 0.25;
+
+	// Cyclone heuristic: wind speed and cycloneWarning
+	let cycloneScore = Math.min(wind / 160, 1) * 0.8;
+	if (toBoolean(input.cycloneWarning) || type === 'CYCLONE') cycloneScore += 0.3;
+
+	// Earthquake heuristic: magnitude
+	let earthquakeScore = Math.min(quake / 8, 1) * 0.9;
+
+	// Landslide heuristic: heavy rain + hilly zones (approx by rainfall and evacuation)
+	let landslideScore = Math.min(rainfall / 100, 1) * 0.5;
+	if (toBoolean(input.evacuationRequired)) landslideScore += 0.2;
+
+	// Fire heuristic: high temperature or dry indicators not available — fallback to low base
+	let fireScore = 0.05;
+	if (type === 'FIRE') fireScore = 0.8;
+
+	// Normalize and weight by confidence and source count
+	const scaleFactor = Math.min(1, 0.5 + 0.15 * sources) * confidence;
+
+	probs.flood = Math.min(1, floodScore * scaleFactor);
+	probs.cyclone = Math.min(1, cycloneScore * scaleFactor);
+	probs.earthquake = Math.min(1, earthquakeScore * scaleFactor);
+	probs.landslide = Math.min(1, landslideScore * scaleFactor);
+	probs.fire = Math.min(1, fireScore * scaleFactor);
+
+	return probs;
 }
 

@@ -54,10 +54,10 @@ class PeopleFirstApp extends StatelessWidget {
       title: 'PeopleFirst',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFD32F2F),
+          seedColor: const Color(0xFF0b62ff),
           brightness: Brightness.dark,
         ),
-        scaffoldBackgroundColor: const Color(0xFF131313),
+        scaffoldBackgroundColor: const Color(0xFF0B1220),
         useMaterial3: true,
         textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
       ),

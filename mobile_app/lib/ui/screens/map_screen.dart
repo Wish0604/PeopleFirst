@@ -20,12 +20,15 @@ class _MapScreenState extends State<MapScreen> {
   LatLng? _nearestShelter;
   List<LatLng> _safeRoute = [];
   List<Marker> _markers = [];
+  Map<String, dynamic>? _nearestShelterData;
+  double? _nearestDistanceMeters;
 
   @override
   void initState() {
     super.initState();
     _fetchCurrentLocation();
     _listenToEmergencies();
+    _listenToShelters();
   }
 
   Future<void> _fetchCurrentLocation() async {
@@ -46,25 +49,53 @@ class _MapScreenState extends State<MapScreen> {
     final position = await Geolocator.getCurrentPosition();
     setState(() {
       _currentLocation = LatLng(position.latitude, position.longitude);
-      _generateMockShelterAndRoute(_currentLocation!);
     });
 
     _mapController.move(_currentLocation!, 15.0);
   }
 
-  void _generateMockShelterAndRoute(LatLng currentLoc) {
-    // Generate a mock shelter approximately 1.2km away
-    _nearestShelter =
-        LatLng(currentLoc.latitude + 0.01, currentLoc.longitude + 0.01);
+  void _listenToShelters() {
+    FirebaseFirestore.instance
+        .collection('shelters')
+        .snapshots()
+        .listen((snapshot) {
+      if (!mounted) return;
+      if (_currentLocation == null) return;
+      
+      LatLng? nearest;
+      double minDistance = double.infinity;
+      Map<String, dynamic>? nearestData;
 
-    // Create a mock staggered route to the shelter
-    _safeRoute = [
-      currentLoc,
-      LatLng(currentLoc.latitude + 0.005, currentLoc.longitude),
-      LatLng(currentLoc.latitude + 0.005, currentLoc.longitude + 0.005),
-      LatLng(currentLoc.latitude + 0.01, currentLoc.longitude + 0.005),
-      _nearestShelter!
-    ];
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final loc = data['location'] ?? data['coords'] ?? data['position'];
+        if (loc != null) {
+          final lat = loc is GeoPoint ? loc.latitude : loc['latitude'] ?? loc['_lat'] ?? loc['lat'];
+          final lng = loc is GeoPoint ? loc.longitude : loc['longitude'] ?? loc['_long'] ?? loc['lng'];
+          if (lat != null && lng != null) {
+            final pt = LatLng(lat, lng);
+            final dist = Geolocator.distanceBetween(
+              _currentLocation!.latitude, _currentLocation!.longitude,
+              lat, lng
+            );
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearest = pt;
+              nearestData = data;
+            }
+          }
+        }
+      }
+
+      if (nearest != null) {
+        setState(() {
+          _nearestShelter = nearest;
+          _nearestShelterData = nearestData;
+          _nearestDistanceMeters = minDistance;
+          _safeRoute = [_currentLocation!, nearest!];
+        });
+      }
+    });
   }
 
   void _listenToEmergencies() {
@@ -211,7 +242,7 @@ class _MapScreenState extends State<MapScreen> {
                             ]),
                         child: const Icon(
                           Icons.home_work,
-                          color: Colors.purple,
+                          color: AppColors.primaryBlue,
                           size: 24,
                         ),
                       ),
@@ -230,7 +261,7 @@ class _MapScreenState extends State<MapScreen> {
             icon: LucideIcons.mapPin,
             title: 'Live Coordination Active',
             subtitle: 'GPS Secured',
-            accent: Colors.blue,
+            accent: AppColors.primaryBlue,
           ),
         ),
         Positioned(
@@ -258,7 +289,10 @@ class _MapScreenState extends State<MapScreen> {
           left: 20,
           right: 20,
           bottom: 24,
-          child: _RouteCard(),
+          child: _RouteCard(
+            shelterData: _nearestShelterData,
+            distanceMeters: _nearestDistanceMeters,
+          ),
         ),
       ],
     );
@@ -350,8 +384,8 @@ class _LegendCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          row(Colors.blue, 'MY LOCATION'),
-          row(Colors.purple, 'SHELTER'),
+          row(AppColors.primaryBlue, 'MY LOCATION'),
+          row(AppColors.primaryBlue, 'SHELTER'),
           row(AppColors.safeGreen, 'SAFE ROUTE'),
           row(AppColors.emergencyRed, 'DANGER ZONE', outlined: true),
         ],
@@ -398,8 +432,34 @@ class _ControlButton extends StatelessWidget {
 }
 
 class _RouteCard extends StatelessWidget {
+  final Map<String, dynamic>? shelterData;
+  final double? distanceMeters;
+  const _RouteCard({this.shelterData, this.distanceMeters});
+
   @override
   Widget build(BuildContext context) {
+    if (shelterData == null) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: AppColors.surface.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              )
+            ]),
+        child: const Center(
+          child: Text('Finding nearest shelter...', style: TextStyle(color: Colors.white70)),
+        ),
+      );
+    }
+
+    final distanceKm = ((distanceMeters ?? 0) / 1000).toStringAsFixed(1);
+    final mins = ((distanceMeters ?? 0) / 1000 * 12).round(); // approx 12 mins per km
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -418,19 +478,19 @@ class _RouteCard extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Nearest Shelter: Civic Center',
-                    style: TextStyle(
+                Text('Nearest Shelter: ${shelterData?['name'] ?? 'Unknown'}',
+                    style: const TextStyle(
                         color: AppColors.safeGreen,
                         fontSize: 10,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2)),
-                SizedBox(height: 6),
-                Text('1.2 km  |  15 mins',
-                    style: TextStyle(
+                const SizedBox(height: 6),
+                Text('$distanceKm km  |  $mins mins',
+                    style: const TextStyle(
                         fontSize: 24,
                         fontWeight: FontWeight.w900,
                         color: Colors.white)),

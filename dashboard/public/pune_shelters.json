@@ -1,0 +1,110 @@
+[
+  {
+    "id": "PUNE_SHELTER_001",
+    "name": "Campus Hall",
+    "type": "education",
+    "lat": 18.5520,
+    "lng": 73.8246,
+    "capacity_total": 2000,
+    "capacity_available": 1800,
+    "facilities": ["water", "electricity", "toilets"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_002",
+    "name": "Auditorium",
+    "type": "education",
+    "lat": 18.5293,
+    "lng": 73.8567,
+    "capacity_total": 1200,
+    "capacity_available": 900,
+    "facilities": ["water", "electricity"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_003",
+    "name": "Hall",
+    "type": "government",
+    "lat": 18.5204,
+    "lng": 73.8567,
+    "capacity_total": 800,
+    "capacity_available": 600,
+    "facilities": ["water", "electricity", "medical"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_004",
+    "name": "Stadium",
+    "type": "stadium",
+    "lat": 18.5822,
+    "lng": 73.7755,
+    "capacity_total": 5000,
+    "capacity_available": 4500,
+    "facilities": ["water", "electricity", "toilets"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_005",
+    "name": "Waiting Hall",
+    "type": "transport",
+    "lat": 18.5286,
+    "lng": 73.8743,
+    "capacity_total": 3000,
+    "capacity_available": 2500,
+    "facilities": ["water", "electricity"],
+    "risk_level": "moderate",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_006",
+    "name": "Hospital",
+    "type": "hospital",
+    "lat": 18.5308,
+    "lng": 73.8747,
+    "capacity_total": 1000,
+    "capacity_available": 400,
+    "facilities": ["medical", "water", "electricity"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_007",
+    "name": "Temporary Medical Camp",
+    "type": "medical_camp",
+    "lat": 18.6414,
+    "lng": 73.8460,
+    "capacity_total": 500,
+    "capacity_available": 350,
+    "facilities": ["medical"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_008",
+    "name": "Warje Relief Camp",
+    "type": "temporary",
+    "lat": 18.4875,
+    "lng": 73.8077,
+    "capacity_total": 700,
+    "capacity_available": 500,
+    "facilities": ["water"],
+    "risk_level": "safe",
+    "accessibility": "road"
+  },
+  {
+    "id": "PUNE_SHELTER_009",
+    "name": "Hadapsar Emergency Tent Zone",
+    "type": "temporary",
+    "lat": 18.5089,
+    "lng": 73.9260,
+    "capacity_total": 1000,
+    "capacity_available": 850,
+    "facilities": ["water", "basic_medical"],
+    "risk_level": "moderate",
+    "accessibility": "partial"
+  }
+]

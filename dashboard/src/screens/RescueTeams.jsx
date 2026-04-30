@@ -14,9 +14,13 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
 import { db } from '../firebase';
 import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
+import { useSheltersSnapshot } from '../hooks/useSheltersSnapshot';
+import { readPoint } from '../utils/shelters';
 
 function getPriorityLabel(priority) {
   if (!priority) return 'MEDIUM';
@@ -44,7 +48,7 @@ export default function RescueTeams() {
   const [layerToggles, setLayerToggles] = useState({ zones: true, teams: true, tasks: true });
   const firestoreTasks = useCollectionSnapshot('tasks');
   const firestoreUsers = useCollectionSnapshot('users');
-  const firestoreShelters = useCollectionSnapshot('shelters');
+  const firestoreShelters = useSheltersSnapshot();
   const firestoreAlerts = useCollectionSnapshot('alerts');
 
   const activeAlerts = useMemo(() => {
@@ -60,6 +64,7 @@ export default function RescueTeams() {
         name: user.name || user.fullName || user.email || user.id,
         dist: user.zoneId || user.baseZone || 'Live registry',
         skills: user.specialties?.length ? user.specialties : [user.role || 'Support'],
+        original: user,
       }));
   }, [firestoreUsers]);
 
@@ -169,26 +174,68 @@ export default function RescueTeams() {
 
       {/* Center: Map Panel */}
       <section className="relative bg-[#0B1220] overflow-hidden border border-outline-variant rounded-2xl min-h-[420px]">
-        {/* Map Background */}
-        <div className="absolute inset-0 opacity-20 grayscale brightness-50">
-          <img 
-            src="https://images.unsplash.com/photo-1569336415962-a4bd9f6dfc0f?auto=format&fit=crop&q=80&w=2000" 
-            className="w-full h-full object-cover" 
-            alt="Tactical map grid"
-          />
+        {/* Real Map Layer */}
+        <div className="absolute inset-0 z-0">
+          <MapContainer 
+            center={[20.5937, 78.9629]} 
+            zoom={4} 
+            style={{ width: '100%', height: '100%', zIndex: 0 }}
+            zoomControl={false}
+          >
+            <TileLayer
+              url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+              attribution='&copy; CARTO'
+            />
+            {layerToggles.tasks && tasks.map(task => {
+              const pt = readPoint(task.original?.location || task.original?.geoLocation || task.original?.coords);
+              if (!pt) return null;
+              return (
+                <CircleMarker key={task.id} center={pt} radius={8} pathOptions={{ color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.9 }}>
+                  <Popup><div className="text-slate-900 font-bold">{task.title}</div></Popup>
+                </CircleMarker>
+              )
+            })}
+            {layerToggles.teams && liveVolunteers.map(vol => {
+              const pt = readPoint(vol.original?.location || vol.original?.coords || vol.original?.position);
+              if (!pt) return null;
+              return (
+                <CircleMarker key={vol.id} center={pt} radius={8} pathOptions={{ color: '#4ade80', fillColor: '#4ade80', fillOpacity: 0.9 }}>
+                  <Popup><div className="text-slate-900 font-bold">{vol.name}</div></Popup>
+                </CircleMarker>
+              )
+            })}
+            {layerToggles.zones && firestoreShelters.map(shelter => {
+              const pt = readPoint(shelter.location ?? shelter.coords ?? shelter.position ?? shelter);
+              if (!pt) return null;
+              return (
+                <CircleMarker key={shelter.id} center={pt} radius={10} pathOptions={{ color: '#60a5fa', fillColor: '#60a5fa', fillOpacity: 0.9 }}>
+                  <Popup><div className="text-slate-900 font-bold">{shelter.name}</div></Popup>
+                </CircleMarker>
+              )
+            })}
+            {layerToggles.zones && activeAlerts.map(alert => {
+              const pt = readPoint(alert.location || alert.coords || alert.position);
+              if (!pt) return null;
+              return (
+                <CircleMarker key={alert.id} center={pt} radius={12} pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9, weight: 2 }}>
+                  <Popup><div className="text-slate-900 font-bold">{alert.title || alert.riskType}</div></Popup>
+                </CircleMarker>
+              )
+            })}
+          </MapContainer>
         </div>
 
-        {/* Tactical Overlay */}
-        <div className="absolute inset-0 z-10 p-6 pointer-events-none">
+        {/* Tactical Overlay Toggles */}
+        <div className="absolute top-0 left-0 right-0 z-10 p-6 pointer-events-none">
           <div className="flex justify-between items-start">
             <div className="flex gap-2 pointer-events-auto">
-              <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-2 rounded-xl flex gap-1">
+              <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-2 rounded-xl flex gap-1 shadow-lg">
                 <button className="p-2 hover:bg-primary/20 rounded-lg text-white"><MapPin size={18} /></button>
                 <button className="p-2 hover:bg-primary/20 rounded-lg text-white"><Smartphone size={18} /></button>
               </div>
             </div>
 
-            <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-2 rounded-2xl pointer-events-auto flex items-center gap-2">
+            <div className="bg-surface-container/90 backdrop-blur border border-outline-variant p-2 rounded-2xl pointer-events-auto flex items-center gap-2 shadow-lg">
               <button
                 onClick={() => toggleLayer('zones')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${layerToggles.zones ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-300 hover:bg-surface-container-high'}`}
@@ -209,59 +256,6 @@ export default function RescueTeams() {
               </button>
             </div>
           </div>
-
-          {/* Markers controlled by map toggles */}
-          {layerToggles.zones && (
-            <motion.div
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
-              className="absolute top-[30%] left-[40%] pointer-events-auto flex flex-col items-center"
-            >
-              <div className="bg-error p-3 rounded-full shadow-lg shadow-error/40 text-on-error">
-                <AlertTriangle size={20} />
-              </div>
-              <div className="mt-3 max-w-[220px] bg-background border border-error px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest truncate text-center">
-                {activeAlerts[0]?.title || activeAlerts[0]?.riskType || 'Live Incident'}
-              </div>
-            </motion.div>
-          )}
-
-          {layerToggles.teams && (
-            <div className="absolute top-[55%] left-[58%] pointer-events-auto flex flex-col items-center">
-              <div className="bg-primary p-3 rounded-full shadow-lg text-on-primary">
-                <Ambulance size={20} />
-              </div>
-              <div className="mt-3 max-w-[220px] bg-background border border-primary px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest truncate text-center">
-                {tasks[0]?.team !== 'Unassigned' ? `${tasks[0]?.team} (ACTIVE)` : 'Rescue Team Alpha'}
-              </div>
-            </div>
-          )}
-
-          {layerToggles.tasks && (
-            <div className="absolute top-[48%] left-[30%] pointer-events-auto flex flex-col items-center">
-              <div className="bg-tertiary p-3 rounded-full shadow-lg text-on-tertiary">
-                <MapPin size={20} />
-              </div>
-              <div className="mt-3 max-w-[220px] bg-background border border-tertiary px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-widest truncate text-center">
-                {tasks[0]?.title || 'Rescue Task'}
-              </div>
-            </div>
-          )}
-
-          {layerToggles.zones && (
-            <div className="absolute top-[20%] right-6 pointer-events-auto">
-              <div className="bg-surface-container border border-outline px-4 py-3 rounded-xl shadow-2xl flex flex-col gap-2 min-w-[140px] max-w-[180px]">
-                <div className="flex items-center gap-3">
-                  <Home size={18} className="text-white" />
-                  <span className="text-[10px] font-black text-white uppercase tracking-wider truncate">{firestoreShelters[0]?.name || 'Shelter A'}</span>
-                </div>
-                <div className="w-full bg-background h-2 rounded-full overflow-hidden">
-                  <div className="bg-error h-full" style={{ width: `${shelterRows[0]?.value || 0}%` }} />
-                </div>
-                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest truncate">{shelterRows[0]?.total || '0 / 0'} Capacity</span>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Bottom Status Bar */}

@@ -294,6 +294,10 @@ Implemented highlights:
 
 Common issues and quick fixes:
 
+- **Flutter `assembleDebug` Out of Memory / Paging file error (Windows):**
+  - Increase your system's virtual memory (paging file) size via Windows Advanced System Settings, or close other memory-heavy applications before running `flutter run`.
+- **Flutter plugins symlink error (Windows):**
+  - Enable **Developer Mode** in your Windows settings (`ms-settings:developers`) to allow Flutter to create symlinks.
 - Flutter cannot find pubspec:
   - run commands from mobile_app directory
 - Device not detected:

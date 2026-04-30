@@ -103,49 +103,64 @@ class HomeScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       children: [
         // Status Header
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: AppColors.emergencyRed.withValues(alpha: 0.2),
-            border: const Border(
-                left: BorderSide(color: AppColors.emergencyRed, width: 8)),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          padding: const EdgeInsets.all(24),
-          child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'CURRENT SAFETY STATUS',
-                style: TextStyle(
-                  color: AppColors.emergencyRed,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                ),
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('alerts')
+              .orderBy('createdAt', descending: true)
+              .limit(1)
+              .snapshots(),
+          builder: (context, snapshot) {
+            final doc = snapshot.data?.docs.firstOrNull;
+            final isCritical = doc?.data()['riskLevel'] == 'CRITICAL';
+            
+            final bgColor = isCritical ? AppColors.emergencyRed : AppColors.warnYellow;
+            final title = isCritical ? 'AT RISK' : (doc != null ? 'WARNING ACTIVE' : 'SYSTEM NORMAL');
+            final message = doc?.data()['message'] ?? 'No active emergencies in your sector.';
+
+            return Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: bgColor.withValues(alpha: 0.15),
+                border: Border(left: BorderSide(color: bgColor, width: 8)),
+                borderRadius: BorderRadius.circular(4),
               ),
-              SizedBox(height: 8),
-              Text(
-                'CURRENT STATUS: AT RISK',
-                style: TextStyle(
-                  color: AppColors.emergencyRed,
-                  fontSize: 28,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.5,
-                  height: 1.1,
-                ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'CURRENT SAFETY STATUS',
+                    style: TextStyle(
+                      color: bgColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'STATUS: $title',
+                    style: TextStyle(
+                      color: bgColor,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    message,
+                    style: TextStyle(
+                      color: bgColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: 8),
-              Text(
-                'Active Cyclone Warning for your area.',
-                style: TextStyle(
-                  color: AppColors.emergencyRed,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         ),
         const SizedBox(height: 24),
 

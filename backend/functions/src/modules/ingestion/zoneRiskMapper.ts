@@ -18,6 +18,7 @@ export interface ZoneRiskDocument {
   riskReason: string;
   riskIntelligenceScore: number;
   riskIntelligenceReason: string;
+  hazardProbabilities?: Record<string, number>;
   externalConfidence: number;
   externalSources: Array<'IMD' | 'SENSOR' | 'SATELLITE' | 'API'>;
   externalSourceCount: number;
@@ -56,6 +57,7 @@ export function mapZoneToRiskDocument(zone: AggregatedZoneSignal): ZoneRiskDocum
     riskReason: intelligentRisk.reason,
     riskIntelligenceScore: intelligentRisk.intelligenceScore,
     riskIntelligenceReason: intelligentRisk.intelligenceReason,
+    hazardProbabilities: intelligentRisk.hazardProbabilities ?? undefined,
     externalConfidence: zone.confidence,
     externalSources: zone.sources,
     externalSourceCount: zone.sources.length,
