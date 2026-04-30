@@ -9,6 +9,7 @@ import 'core/services/notification_service.dart';
 import 'firebase_options.dart';
 import 'ui/main_navigation_screen.dart';
 
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Popup, Polygon } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import { db } from '../firebase';
@@ -44,16 +44,58 @@ function formatLocation(location) {
   return location.name || location.label || 'Unknown';
 }
 
+function getZoneCoordinates(zone) {
+  if (Array.isArray(zone.polygon) && zone.polygon.length > 0) {
+    return zone.polygon
+      .map((point) => [point.lat ?? point.latitude ?? point._lat, point.lng ?? point.longitude ?? point._long])
+      .filter(([lat, lng]) => typeof lat === 'number' && typeof lng === 'number');
+  }
+
+  if (zone.geojson?.type === 'Polygon' && Array.isArray(zone.geojson.coordinates?.[0])) {
+    return zone.geojson.coordinates[0]
+      .map(([lng, lat]) => [lat, lng])
+      .filter(([lat, lng]) => typeof lat === 'number' && typeof lng === 'number');
+  }
+
+  return [];
+}
+
 export default function RescueTeams() {
   const [layerToggles, setLayerToggles] = useState({ zones: true, teams: true, tasks: true });
   const firestoreTasks = useCollectionSnapshot('tasks');
   const firestoreUsers = useCollectionSnapshot('users');
   const firestoreShelters = useSheltersSnapshot();
   const firestoreAlerts = useCollectionSnapshot('alerts');
+  const firestoreZones = useCollectionSnapshot('zones');
 
   const activeAlerts = useMemo(() => {
     return firestoreAlerts.filter((alert) => (alert.riskPriority || '').toUpperCase() !== 'ROUTINE').slice(0, 3);
   }, [firestoreAlerts]);
+
+  const shelterMarkers = useMemo(() => {
+    return firestoreShelters
+      .map((shelter) => ({
+        ...shelter,
+        point: readPoint(shelter.location ?? shelter.coords ?? shelter.position ?? shelter),
+      }))
+      .filter((shelter) => shelter.point);
+  }, [firestoreShelters]);
+
+  const dangerZones = useMemo(() => {
+    return firestoreZones
+      .map((zone) => {
+        const severity = String(zone.riskLevel || zone.risk_level || '').toUpperCase();
+        const isDanger = severity === 'CRITICAL' || severity === 'HIGH' || zone.floodRisk || zone.cycloneWarning || zone.evacuationRequired;
+        return {
+          ...zone,
+          severity,
+          isDanger,
+          coordinates: getZoneCoordinates(zone),
+          point: readPoint(zone.location ?? zone.center ?? zone.position ?? zone),
+        };
+      })
+      .filter((zone) => zone.isDanger);
+  }, [firestoreZones]);
 
   const liveVolunteers = useMemo(() => {
     return firestoreUsers
@@ -204,14 +246,51 @@ export default function RescueTeams() {
                 </CircleMarker>
               )
             })}
-            {layerToggles.zones && firestoreShelters.map(shelter => {
-              const pt = readPoint(shelter.location ?? shelter.coords ?? shelter.position ?? shelter);
-              if (!pt) return null;
-              return (
-                <CircleMarker key={shelter.id} center={pt} radius={10} pathOptions={{ color: '#60a5fa', fillColor: '#60a5fa', fillOpacity: 0.9 }}>
-                  <Popup><div className="text-slate-900 font-bold">{shelter.name}</div></Popup>
-                </CircleMarker>
-              )
+            {layerToggles.zones && shelterMarkers.map((shelter) => (
+              <CircleMarker
+                key={`shelter-${shelter.id}`}
+                center={shelter.point}
+                radius={9}
+                pathOptions={{ color: '#60a5fa', fillColor: '#60a5fa', fillOpacity: 0.92 }}
+              >
+                <Popup>
+                  <div className="text-slate-900 font-bold">{shelter.name || 'Shelter'}</div>
+                </Popup>
+              </CircleMarker>
+            ))}
+            {layerToggles.zones && dangerZones.map((zone) => {
+              if (zone.coordinates.length > 0) {
+                const critical = zone.severity === 'CRITICAL';
+                return (
+                  <Polygon
+                    key={`zone-poly-${zone.id}`}
+                    positions={zone.coordinates}
+                    pathOptions={{
+                      color: critical ? '#ef4444' : '#f59e0b',
+                      fillColor: critical ? '#ef4444' : '#f59e0b',
+                      fillOpacity: 0.18,
+                      weight: 2,
+                    }}
+                  >
+                    <Popup><div className="text-slate-900 font-bold">{zone.zoneName || zone.name || 'Danger zone'}</div></Popup>
+                  </Polygon>
+                );
+              }
+
+              if (zone.point) {
+                return (
+                  <CircleMarker
+                    key={`zone-point-${zone.id}`}
+                    center={zone.point}
+                    radius={14}
+                    pathOptions={{ color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.25, weight: 2 }}
+                  >
+                    <Popup><div className="text-slate-900 font-bold">{zone.zoneName || zone.name || 'Danger zone'}</div></Popup>
+                  </CircleMarker>
+                );
+              }
+
+              return null;
             })}
             {layerToggles.zones && activeAlerts.map(alert => {
               const pt = readPoint(alert.location || alert.coords || alert.position);
@@ -240,7 +319,7 @@ export default function RescueTeams() {
                 onClick={() => toggleLayer('zones')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${layerToggles.zones ? 'bg-primary/20 text-primary border border-primary/30' : 'text-slate-300 hover:bg-surface-container-high'}`}
               >
-                Zones
+                Alerts + Shelters
               </button>
               <button
                 onClick={() => toggleLayer('teams')}
@@ -274,7 +353,7 @@ export default function RescueTeams() {
             </div>
             <div className="flex flex-col min-w-0 sm:border-l sm:border-outline-variant sm:pl-4">
               <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Shelter Coverage</span>
-              <span className="text-sm font-bold text-white truncate">{operationsSummary.shelters} live shelters</span>
+              <span className="text-sm font-bold text-white truncate">{operationsSummary.shelters} live shelters visible</span>
             </div>
           </div>
 

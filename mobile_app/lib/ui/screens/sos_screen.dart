@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:torch_light/torch_light.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/services/local_storage_service.dart';
@@ -20,10 +22,41 @@ class _SosScreenState extends State<SosScreen> {
   String _injuryStatus = 'None';
   final TextEditingController _needsController = TextEditingController();
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isEmergencySignalActive = false;
+
   @override
   void dispose() {
+    _audioPlayer.dispose();
+    try {
+      TorchLight.disableTorch();
+    } catch (_) {}
     _needsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleEmergencySignals() async {
+    if (_isEmergencySignalActive) {
+      await _audioPlayer.stop();
+      try {
+        await TorchLight.disableTorch();
+      } catch (_) {}
+      setState(() {
+        _isEmergencySignalActive = false;
+      });
+    } else {
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.play(AssetSource('siren.wav'));
+      try {
+        final hasTorch = await TorchLight.isTorchAvailable();
+        if (hasTorch) {
+          await TorchLight.enableTorch();
+        }
+      } catch (_) {}
+      setState(() {
+        _isEmergencySignalActive = true;
+      });
+    }
   }
 
   Future<Position?> _readCurrentLocation() async {
@@ -157,97 +190,139 @@ class _SosScreenState extends State<SosScreen> {
   }
 
   Widget _buildAlert() {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            height: 360,
-            color: AppColors.emergencyRed,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Opacity(
-                  opacity: 0.14,
-                  child: Container(color: Colors.black),
-                ),
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    _SirenCircle(),
-                    SizedBox(height: 18),
-                    Text('Cyclone Warning',
-                        style: TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white)),
-                    SizedBox(height: 8),
-                    Text('Hyperlocal Zone B - Downtown',
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white70,
-                            letterSpacing: 1.5)),
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('alerts')
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          debugPrint('Error loading alerts: ${snapshot.error}');
+        }
+
+        final latestAlert = snapshot.data?.docs.isNotEmpty == true
+            ? snapshot.data!.docs.first.data()
+            : null;
+
+        final alertType = (latestAlert?['type'] ?? 'SYSTEM').toString();
+        final alertMessage = (latestAlert?['message'] ?? 'No active emergency declared at this time.').toString();
+        final zone = (latestAlert?['sourceZoneName'] ?? latestAlert?['sourceZoneId'] ?? 'Global Area').toString();
+        final riskLevel = (latestAlert?['riskLevel'] ?? 'LOW').toString().toUpperCase();
+
+        final isCritical = riskLevel == 'CRITICAL' || riskLevel == 'HIGH';
+        final bgColor = isCritical ? AppColors.emergencyRed : AppColors.primaryBlue;
+        final infoHeadline = isCritical ? 'IMMEDIATE' : 'MONITOR';
+        final infoSubtitle = isCritical ? 'Action Required' : 'Stay Prepared';
+
+        return SingleChildScrollView(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                height: 360,
+                color: bgColor,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Opacity(
+                      opacity: 0.14,
+                      child: Container(color: Colors.black),
+                    ),
+                    Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const _SirenCircle(),
+                        const SizedBox(height: 18),
+                        Text('$alertType Warning',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                fontSize: 36,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white)),
+                        const SizedBox(height: 8),
+                        Text(zone,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white70,
+                                letterSpacing: 1.5)),
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Text(alertMessage,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white)),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Transform.translate(
-            offset: const Offset(0, -24),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Row(
+              ),
+              Transform.translate(
+                offset: const Offset(0, -24),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: _InfoCard(
-                          title: 'Urgent Action Required',
-                          headline: '01:58:12',
-                          subtitle: 'Evacuate in 2 hrs',
-                          accent: AppColors.emergencyRed,
-                          centered: true,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _InfoCard(
+                              title: 'Urgent Action Required',
+                              headline: infoHeadline,
+                              subtitle: infoSubtitle,
+                              accent: bgColor,
+                              centered: true,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              onTap: _toggleEmergencySignals,
+                              child: _ActionCard(
+                                title: 'Emergency Signals',
+                                headline: _isEmergencySignalActive ? 'Stop Siren' : 'Activate Siren',
+                                icon: _isEmergencySignalActive ? LucideIcons.volumeX : LucideIcons.volume2,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _ActionCard(
-                          title: 'Audio Broadcast',
-                          headline: 'Play Voice Alert',
-                          icon: LucideIcons.volume2,
-                        ),
+                      const SizedBox(height: 12),
+                      _BannerRow(
+                        icon: LucideIcons.wind,
+                        label: 'Local Outdoor Sirens Active',
+                        accent: bgColor,
                       ),
+                      const SizedBox(height: 12),
+                      _AlertExplainabilityPanel(),
+                      const SizedBox(height: 16),
+                      _PrimaryAction(
+                          label: 'I Am Safe',
+                          color: AppColors.safeGreen,
+                          textColor: Colors.black,
+                          icon: LucideIcons.checkCircle2,
+                          onTap: () => _submitStatus('SAFE')),
+                      const SizedBox(height: 12),
+                      _PrimaryAction(
+                          label: 'Need Help',
+                          color: AppColors.emergencyRed,
+                          textColor: Colors.white,
+                          icon: LucideIcons.shieldAlert,
+                          onTap: () => setState(() => _view = 'form')),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  _BannerRow(
-                    icon: LucideIcons.wind,
-                    label: 'Local Outdoor Sirens Active',
-                    accent: AppColors.emergencyRed,
-                  ),
-                  const SizedBox(height: 12),
-                  _AlertExplainabilityPanel(),
-                  const SizedBox(height: 16),
-                  _PrimaryAction(
-                      label: 'I Am Safe',
-                      color: AppColors.safeGreen,
-                      textColor: Colors.black,
-                      icon: LucideIcons.checkCircle2,
-                      onTap: () => _submitStatus('SAFE')),
-                  const SizedBox(height: 12),
-                  _PrimaryAction(
-                      label: 'Need Help',
-                      color: AppColors.emergencyRed,
-                      textColor: Colors.white,
-                      icon: LucideIcons.shieldAlert,
-                      onTap: () => setState(() => _view = 'form')),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

@@ -20,6 +20,8 @@ class _MapScreenState extends State<MapScreen> {
   LatLng? _nearestShelter;
   List<LatLng> _safeRoute = [];
   List<Marker> _markers = [];
+  List<Marker> _shelterMarkers = [];
+  List<Map<String, dynamic>> _rawShelters = [];
   Map<String, dynamic>? _nearestShelterData;
   double? _nearestDistanceMeters;
 
@@ -52,6 +54,7 @@ class _MapScreenState extends State<MapScreen> {
     });
 
     _mapController.move(_currentLocation!, 15.0);
+    _processShelters();
   }
 
   void _listenToShelters() {
@@ -60,20 +63,51 @@ class _MapScreenState extends State<MapScreen> {
         .snapshots()
         .listen((snapshot) {
       if (!mounted) return;
-      if (_currentLocation == null) return;
-      
-      LatLng? nearest;
-      double minDistance = double.infinity;
-      Map<String, dynamic>? nearestData;
+      _rawShelters = snapshot.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+      _processShelters();
+    });
+  }
 
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final loc = data['location'] ?? data['coords'] ?? data['position'];
-        if (loc != null) {
-          final lat = loc is GeoPoint ? loc.latitude : loc['latitude'] ?? loc['_lat'] ?? loc['lat'];
-          final lng = loc is GeoPoint ? loc.longitude : loc['longitude'] ?? loc['_long'] ?? loc['lng'];
-          if (lat != null && lng != null) {
-            final pt = LatLng(lat, lng);
+  void _processShelters() {
+    LatLng? nearest;
+    double minDistance = double.infinity;
+    Map<String, dynamic>? nearestData;
+    List<Marker> newShelterMarkers = [];
+
+    for (var data in _rawShelters) {
+      final loc = data['location'] ?? data['coords'] ?? data['position'] ?? data;
+      if (loc != null) {
+        final lat = loc is GeoPoint ? loc.latitude : loc['latitude'] ?? loc['_lat'] ?? loc['lat'];
+        final lng = loc is GeoPoint ? loc.longitude : loc['longitude'] ?? loc['_long'] ?? loc['lng'];
+        if (lat != null && lng != null) {
+          final pt = LatLng(lat, lng);
+          
+          newShelterMarkers.add(
+            Marker(
+              width: 30.0,
+              height: 30.0,
+              point: pt,
+              child: Container(
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.primaryBlue.withValues(alpha: 0.5), width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 4,
+                      )
+                    ]),
+                child: const Icon(
+                  Icons.home_work,
+                  color: AppColors.primaryBlue,
+                  size: 16,
+                ),
+              ),
+            ),
+          );
+
+          if (_currentLocation != null) {
             final dist = Geolocator.distanceBetween(
               _currentLocation!.latitude, _currentLocation!.longitude,
               lat, lng
@@ -86,14 +120,15 @@ class _MapScreenState extends State<MapScreen> {
           }
         }
       }
+    }
 
-      if (nearest != null) {
-        setState(() {
-          _nearestShelter = nearest;
-          _nearestShelterData = nearestData;
-          _nearestDistanceMeters = minDistance;
-          _safeRoute = [_currentLocation!, nearest!];
-        });
+    setState(() {
+      _shelterMarkers = newShelterMarkers;
+      if (nearest != null && _currentLocation != null) {
+        _nearestShelter = nearest;
+        _nearestShelterData = nearestData;
+        _nearestDistanceMeters = minDistance;
+        _safeRoute = [_currentLocation!, nearest!];
       }
     });
   }
@@ -223,6 +258,7 @@ class _MapScreenState extends State<MapScreen> {
                     ),
                   ],
                 ),
+              MarkerLayer(markers: _shelterMarkers),
               if (_nearestShelter != null)
                 MarkerLayer(
                   markers: [

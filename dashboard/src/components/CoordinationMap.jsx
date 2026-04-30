@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, Polygon } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
+import { useCollectionSnapshot } from '../hooks/useCollectionSnapshot';
 import { useSheltersSnapshot } from '../hooks/useSheltersSnapshot';
 import { readPoint } from '../utils/shelters';
 
@@ -56,6 +57,7 @@ function uniqueById(items) {
 
 export default function CoordinationMap() {
   const shelters = useSheltersSnapshot();
+  const zones = useCollectionSnapshot('zones');
 
   const locatedShelters = useMemo(
     () => shelters.filter((shelter) => readPoint(shelter.location ?? shelter.coords ?? shelter.position ?? shelter)),
@@ -72,6 +74,25 @@ export default function CoordinationMap() {
 
   const zoomLevel = locatedShelters.length > 0 ? 12 : 5;
 
+  const visibleZones = useMemo(() => {
+    return zones
+      .map((zone) => {
+        const coordinates = getZoneCoordinates(zone);
+        const point = readPoint(zone.location ?? zone.center ?? zone.position ?? zone);
+        const severity = String(zone.riskLevel || zone.risk_level || '').toUpperCase();
+        const isDanger = severity === 'CRITICAL' || severity === 'HIGH' || zone.floodRisk || zone.cycloneWarning || zone.evacuationRequired;
+
+        return {
+          ...zone,
+          coordinates,
+          point,
+          isDanger,
+          severity,
+        };
+      })
+      .filter((zone) => zone.isDanger && (zone.coordinates.length > 0 || zone.point));
+  }, [zones]);
+
   // No volunteer or task controls in shelter-only map
   return (
     <section className="panel coordination-map">
@@ -79,6 +100,7 @@ export default function CoordinationMap() {
       <p className="muted">Showing Pune shelters (data-driven)</p>
       <div className="map-legend" style={{ marginTop: '12px', marginBottom: '16px' }}>
         <div className="legend-item"><span className="dot-blue"></span> Shelters ({locatedShelters.length})</div>
+        <div className="legend-item"><span className="dot-orange"></span> Danger zones ({visibleZones.length})</div>
       </div>
       
       <div className="map-container" style={{ border: 'none', background: 'transparent' }}>
@@ -94,6 +116,58 @@ export default function CoordinationMap() {
           />
 
           {/* Shelters */}
+
+          {/* Danger zones */}
+          {visibleZones.map((zone) => {
+            if (zone.coordinates.length > 0) {
+              const danger = zone.severity === 'CRITICAL';
+              return (
+                <Polygon
+                  key={`zone-poly-${zone.id}`}
+                  positions={zone.coordinates}
+                  pathOptions={{
+                    color: danger ? '#ef4444' : '#f59e0b',
+                    fillColor: danger ? '#ef4444' : '#f59e0b',
+                    fillOpacity: 0.18,
+                    weight: 2,
+                  }}
+                >
+                  <Popup>
+                    <div style={{ color: '#0b1020' }}>
+                      <div style={{ fontWeight: '700' }}>{zone.zoneName || zone.name || 'Danger zone'}</div>
+                      <div style={{ fontSize: 12, marginTop: 6 }}>Risk: {zone.severity || 'UNKNOWN'}</div>
+                    </div>
+                  </Popup>
+                </Polygon>
+              );
+            }
+
+            if (zone.point) {
+              const [lat, lng] = zone.point;
+              return (
+                <CircleMarker
+                  key={`zone-point-${zone.id}`}
+                  center={[lat, lng]}
+                  radius={18}
+                  pathOptions={{
+                    color: '#ef4444',
+                    fillColor: '#ef4444',
+                    fillOpacity: 0.22,
+                    weight: 2,
+                  }}
+                >
+                  <Popup>
+                    <div style={{ color: '#0b1020' }}>
+                      <div style={{ fontWeight: '700' }}>{zone.zoneName || zone.name || 'Danger zone'}</div>
+                      <div style={{ fontSize: 12, marginTop: 6 }}>Risk: {zone.severity || 'UNKNOWN'}</div>
+                    </div>
+                  </Popup>
+                </CircleMarker>
+              );
+            }
+
+            return null;
+          })}
 
           {/* Shelters */}
           {locatedShelters.map((shelter) => {
@@ -126,7 +200,7 @@ export default function CoordinationMap() {
       </div>
 
       <div className="map-legend" style={{ marginTop: '12px' }}>
-        <div style={{ color: '#94a3b8', fontSize: '12px' }}>Showing Pune shelters only.</div>
+        <div style={{ color: '#94a3b8', fontSize: '12px' }}>Showing Pune shelters and active danger zones.</div>
       </div>
     </section>
   );

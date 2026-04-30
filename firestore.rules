@@ -60,6 +60,11 @@ service cloud.firestore {
     match /zones/{zoneId} {
       allow read, write: if true;
     }
+
+    // SHELTERS: Dashboard and mobile app need to read all shelters for map
+    match /shelters/{shelterId} {
+      allow read, write: if true;
+    }
     
     // Deny everything else by default
     match /{document=**} {
